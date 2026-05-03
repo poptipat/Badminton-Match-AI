@@ -22,7 +22,6 @@ export default function CheckoutPage() {
       const { data: session } = await supabase.from("daily_sessions").select("id, court_fee_flat").eq("is_active", true).single();
 
       if (session) {
-        // 🌟 แก้ไขตรงนี้: เติม !profile_id เพื่อบอกให้ Supabase รู้ว่าดึงข้อมูลจากคนตี
         const { data: partData, error } = await supabase
           .from("session_participants")
           .select("*, profiles!profile_id(display_name)")
@@ -64,7 +63,7 @@ export default function CheckoutPage() {
     await supabase
       .from("session_participants")
       .update({
-        payment_status: "pending", // เปลี่ยนสถานะเป็น รอตรวจสอบ
+        payment_status: "pending", 
         payment_slip_url: publicUrlData.publicUrl,
         checkout_time: new Date().toISOString()
       })
@@ -84,10 +83,14 @@ export default function CheckoutPage() {
     </div>
   );
 
-  // คำนวณยอดรวมสุทธิ
-  const totalAmount = participant.total_amount_due + (participant.accumulated_shuttle_fee || 0);
-  // สร้าง QR Code พร้อมเพย์แบบระบุยอดเงินเป๊ะๆ
-  const qrCodeUrl = `https://promptpay.io/${PROMPTPAY_NUMBER}/${totalAmount}`;
+  // 🌟 ลอจิกการคำนวณเงินใหม่ 🌟
+  const gamesCount = participant.games_played_today || 0;
+  const totalShuttleFee = gamesCount * 27; // เอาจำนวนเกม * 27 บาท
+  const courtFee = 50; // ค่าสนามเหมาจ่าย
+  const grandTotal = totalShuttleFee + courtFee; // ยอดรวมทั้งหมด
+
+  // สร้าง QR Code พร้อมเพย์แบบระบุยอดเงินเป๊ะๆ (ใช้ grandTotal ที่คำนวณมาใหม่)
+  const qrCodeUrl = `https://promptpay.io/${PROMPTPAY_NUMBER}/${grandTotal}`;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 font-sans flex items-center justify-center">
@@ -100,20 +103,20 @@ export default function CheckoutPage() {
         </div>
 
         <div className="p-6">
-          {/* รายละเอียดค่าใช้จ่าย */}
+          {/* 🌟 รายละเอียดค่าใช้จ่าย (อัปเดตใหม่) 🌟 */}
           <div className="bg-gray-50 rounded-xl p-4 mb-6 border border-gray-100">
             <div className="flex justify-between mb-2 text-gray-600">
               <span>ค่าสนาม (เหมา)</span>
-              <span>{participant.total_amount_due} บาท</span>
+              <span>{courtFee} บาท</span>
             </div>
             <div className="flex justify-between mb-2 text-gray-600">
-              <span>ค่าลูกแบด ({participant.games_played_today} เกม)</span>
-              <span>{participant.accumulated_shuttle_fee || 0} บาท</span>
+              <span>ค่าลูกแบด ({gamesCount} เกม)</span>
+              <span>{totalShuttleFee} บาท</span>
             </div>
             <hr className="my-3 border-gray-200" />
             <div className="flex justify-between font-bold text-xl text-gray-800">
               <span>ยอดรวมทั้งสิ้น</span>
-              <span className="text-blue-600">{totalAmount} บาท</span>
+              <span className="text-blue-600">{grandTotal} บาท</span>
             </div>
           </div>
 

@@ -59,11 +59,21 @@ export default function QueueBoard() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 font-sans">
       <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
+      <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800">📋 กระดานจัดคิว</h1>
-          <Link href="/" className="bg-white text-gray-600 px-4 py-2 rounded-lg shadow-sm border hover:bg-gray-50 transition">
-            กลับหน้าหลัก
-          </Link>
+          
+          <div className="flex gap-3">
+            <Link href="/profile" className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-blue-500 transition font-bold">
+              👤 โปรไฟล์ของฉัน
+            </Link>
+            <Link href="/leaderboard" className="bg-yellow-500 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-yellow-400 transition font-bold">
+              🏆 ทำเนียบเทพแบด
+            </Link>
+            <Link href="/" className="bg-white text-gray-600 px-4 py-2 rounded-lg shadow-sm border hover:bg-gray-50 transition font-bold">
+              🏠 กลับหน้าหลัก
+            </Link>
+          </div>
+          
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
