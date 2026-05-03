@@ -63,6 +63,11 @@ export default function QueueBoard() {
           <h1 className="text-3xl font-bold text-gray-800">📋 กระดานจัดคิว</h1>
           
           <div className="flex gap-3">
+            {/* 🌟 ปุ่มใหม่: แทรกไว้บนสุดตรงนี้เลยครับ 🌟 */}
+            <Link href="/setup-profile" className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-green-500 transition font-bold">
+              + ลงทะเบียนผู้เล่นใหม่
+            </Link>
+
             <Link href="/profile" className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-blue-500 transition font-bold">
               👤 โปรไฟล์ของฉัน
             </Link>
