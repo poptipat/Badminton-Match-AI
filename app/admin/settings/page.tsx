@@ -1,0 +1,233 @@
+"use client";
+import { supabase } from "@/utils/supabase";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+export default function AdminSettings() {
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // 🌟 State สำหรับฟอร์มตั้งค่า
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isActive, setIsActive] = useState(false);
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [maxPlayers, setMaxPlayers] = useState(16);
+  const [courtFee, setCourtFee] = useState(50);
+  const [shuttleFee, setShuttleFee] = useState(27);
+
+  useEffect(() => {
+    checkAdminAndFetchSession();
+  }, []);
+
+  const checkAdminAndFetchSession = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user.id).single();
+      if (profile?.is_admin) {
+        setIsAdmin(true);
+        fetchCurrentSession();
+      } else {
+        setLoading(false);
+      }
+    } else {
+      setLoading(false);
+    }
+  };
+
+  // แปลงเวลาจากฐานข้อมูลมาแสดงในช่อง Input (datetime-local)
+  const toLocalDatetimeInput = (isoString: string) => {
+    if (!isoString) return "";
+    const date = new Date(isoString);
+    // ปรับเวลาให้ตรงกับ Local timezone ของเครื่อง
+    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+    return date.toISOString().slice(0, 16); 
+  };
+
+  const fetchCurrentSession = async () => {
+    const { data: session } = await supabase.from("daily_sessions").select("*").eq("is_active", true).single();
+    
+    if (session) {
+      setSessionId(session.id);
+      setIsActive(session.is_active);
+      setStartTime(toLocalDatetimeInput(session.start_time));
+      setEndTime(toLocalDatetimeInput(session.end_time));
+      setMaxPlayers(session.max_players || 16);
+      setCourtFee(session.court_fee_flat || 50);
+      setShuttleFee(session.base_shuttle_fee || 27);
+    }
+    setLoading(false);
+  };
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+
+    // แปลงเวลากลับเป็น ISO String แบบสากล (UTC) ก่อนบันทึกลงฐานข้อมูล
+    const startIso = startTime ? new Date(startTime).toISOString() : null;
+    const endIso = endTime ? new Date(endTime).toISOString() : null;
+
+    const sessionData = {
+      is_active: isActive,
+      start_time: startIso,
+      end_time: endIso,
+      max_players: maxPlayers,
+      court_fee_flat: courtFee,
+      base_shuttle_fee: shuttleFee,
+    };
+
+    if (sessionId) {
+      // 📝 อัปเดตก๊วนเดิมที่มีอยู่
+      const { error } = await supabase.from("daily_sessions").update(sessionData).eq("id", sessionId);
+      if (error) alert("บันทึกไม่สำเร็จ: " + error.message);
+      else alert("✅ บันทึกการตั้งค่าก๊วนเรียบร้อยแล้ว!");
+    } else {
+      // ✨ สร้างก๊วนใหม่ของวันนี้ (กรณีเปิดก๊วนครั้งแรก)
+      const { error } = await supabase.from("daily_sessions").insert([sessionData]);
+      if (error) alert("สร้างก๊วนใหม่ไม่สำเร็จ: " + error.message);
+      else {
+        alert("✅ เปิดก๊วนใหม่เรียบร้อยแล้ว!");
+        fetchCurrentSession(); // โหลด ID ใหม่มาเก็บไว้
+      }
+    }
+    setSaving(false);
+  };
+
+  const handleCloseSession = async () => {
+    if (!confirm("⚠️ แน่ใจหรือไม่ที่จะ 'ปิดก๊วน' ตอนนี้? (คนจะไม่สามารถลงชื่อเพิ่มได้อีก)")) return;
+    setSaving(true);
+    if (sessionId) {
+      await supabase.from("daily_sessions").update({ is_active: false }).eq("id", sessionId);
+      setIsActive(false);
+      alert("ปิดก๊วนเรียบร้อยแล้วครับ");
+    }
+    setSaving(false);
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-yellow-400 font-bold text-xl">กำลังโหลดระบบตั้งค่า...</div>;
+
+  if (!isAdmin) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-950 text-white p-4 text-center">
+      <span className="text-6xl mb-4">⛔</span>
+      <h1 className="text-2xl font-bold text-red-500 mb-2">ไม่มีสิทธิ์เข้าถึง</h1>
+      <p className="text-gray-400 mb-6">เฉพาะแอดมินเท่านั้นที่สามารถตั้งค่าระบบได้</p>
+      <Link href="/" className="bg-gray-800 px-6 py-2 rounded-xl hover:bg-gray-700 transition">กลับหน้าหลัก</Link>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-white p-4 md:p-6 font-sans">
+      <div className="max-w-2xl mx-auto">
+        
+        {/* 🌟 Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-gray-800 pb-5 gap-4">
+          <h1 className="text-2xl md:text-3xl font-black text-gray-100 flex items-center gap-2">
+            <span className="text-yellow-500">⚙️</span> ตั้งค่าก๊วนประจำวัน
+          </h1>
+          <Link href="/admin" className="w-full md:w-auto bg-gray-800 border border-gray-700 text-gray-300 px-5 py-2.5 rounded-xl hover:bg-gray-700 transition shadow-md font-bold text-center text-sm md:text-base">
+            🔙 กลับหน้าจัดคอร์ด
+          </Link>
+        </div>
+
+        <div className="bg-gray-900 rounded-3xl p-6 md:p-8 shadow-2xl border border-gray-800">
+          
+          <div className="flex items-center justify-between mb-8 bg-gray-950 p-4 rounded-2xl border border-gray-800">
+            <div>
+              <h2 className="text-lg font-bold text-white">สถานะก๊วนวันนี้</h2>
+              <p className="text-sm text-gray-500">{isActive ? "เปิดรับสมัครลงคิวแล้ว" : "ยังไม่ได้เปิดก๊วน"}</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={isActive} onChange={() => setIsActive(!isActive)} />
+              <div className="w-14 h-7 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-500"></div>
+            </label>
+          </div>
+
+          <form onSubmit={handleSaveSettings} className="space-y-6">
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* เวลาเปิด-ปิด */}
+              <div>
+                <label className="block text-sm font-bold text-gray-400 mb-2">เวลาเปิดรับคิว / เริ่มตี</label>
+                <input 
+                  type="datetime-local" 
+                  required
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full bg-gray-800 text-white border border-gray-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-400 mb-2">เวลาจบก๊วน</label>
+                <input 
+                  type="datetime-local" 
+                  required
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="w-full bg-gray-800 text-white border border-gray-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition"
+                />
+              </div>
+
+              {/* การรับคน */}
+              <div>
+                <label className="block text-sm font-bold text-gray-400 mb-2">รับคนสูงสุด (คน)</label>
+                <input 
+                  type="number" 
+                  required min="4" max="100"
+                  value={maxPlayers}
+                  onChange={(e) => setMaxPlayers(Number(e.target.value))}
+                  className="w-full bg-gray-800 text-white border border-gray-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition text-2xl font-black text-center"
+                />
+              </div>
+
+              {/* ค่าใช้จ่าย */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-400 mb-2">ค่าสนามเหมาจ่าย (บาท)</label>
+                  <input 
+                    type="number" 
+                    required min="0"
+                    value={courtFee}
+                    onChange={(e) => setCourtFee(Number(e.target.value))}
+                    className="w-full bg-gray-800 text-emerald-400 border border-gray-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-400 mb-2">ค่าลูกแบด (บาท/เกม)</label>
+                  <input 
+                    type="number" 
+                    required min="0"
+                    value={shuttleFee}
+                    onChange={(e) => setShuttleFee(Number(e.target.value))}
+                    className="w-full bg-gray-800 text-emerald-400 border border-gray-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-6 border-t border-gray-800 flex flex-col md:flex-row gap-4">
+              <button 
+                type="submit" 
+                disabled={saving}
+                className="flex-1 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold py-4 rounded-xl transition shadow-md text-lg active:scale-95 disabled:bg-gray-600 disabled:cursor-not-allowed"
+              >
+                {saving ? "กำลังบันทึก..." : "💾 บันทึกและอัปเดตระบบ"}
+              </button>
+
+              {isActive && sessionId && (
+                <button 
+                  type="button"
+                  onClick={handleCloseSession}
+                  className="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-500 font-bold py-4 px-6 rounded-xl transition md:w-auto w-full active:scale-95"
+                >
+                  ปิดก๊วนวันนี้
+                </button>
+              )}
+            </div>
+
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
