@@ -11,7 +11,6 @@ export default function Home() {
   const [allProfiles, setAllProfiles] = useState<any[]>([]); 
   const [selectedPartner, setSelectedPartner] = useState<string>(""); 
 
-  // 🌟 เก็บข้อมูล "ก๊วนของฉัน" ทั้งก้อน เพื่อเช็กสถานะการจ่ายเงินและการพักคิว
   const [myRecord, setMyRecord] = useState<any>(null); 
   const [isAdmin, setIsAdmin] = useState(false); 
 
@@ -36,7 +35,6 @@ export default function Home() {
       if (session) {
         setSessionToday(session);
 
-        // 🌟 นับจำนวนคน เฉพาะคนที่ 'กำลังอยู่ในคิว' เท่านั้น (ไม่นับคนที่พัก)
         const { count } = await supabase
           .from("session_participants")
           .select("*", { count: 'exact', head: true })
@@ -52,7 +50,6 @@ export default function Home() {
         
         setAllProfiles(profiles || []);
 
-        // 🌟 ดึงข้อมูลคิวของเรามาเก็บไว้ทั้งแถวเลย
         const { data: myData } = await supabase
           .from("session_participants")
           .select("*")
@@ -81,12 +78,10 @@ export default function Home() {
     setMyRecord(null);
   };
 
-  // 🌟 ฟังก์ชันลงชื่อ อัปเดตใหม่ให้รองรับการ "กลับมาจากพัก"
   const handleJoinQueue = async () => {
     if (!sessionToday || !user) return;
     
     if (myRecord) {
-      // ถ้าเคยมี record แล้ว (แสดงว่าเคยกดพักไป) ให้ดึงกลับมาเป็น waiting
       const { error } = await supabase
         .from("session_participants")
         .update({ 
@@ -97,10 +92,9 @@ export default function Home() {
 
       if (!error) {
         alert("✅ เข้าคิวต่อเรียบร้อย! ลุยเลย 🏸");
-        checkUserAndSession(); // รีเฟรชข้อมูล
+        checkUserAndSession(); 
       }
     } else {
-      // ถ้าไม่เคยมี ให้ Insert ใหม่
       const { error } = await supabase
         .from("session_participants")
         .insert({
@@ -114,25 +108,53 @@ export default function Home() {
 
       if (!error) {
         alert("✅ ลงชื่อสำเร็จ! ลุยกันเลย 🏸");
-        checkUserAndSession(); // รีเฟรชข้อมูล
+        checkUserAndSession(); 
       }
     }
   };
 
-  // 🌟 ฟังก์ชันยกเลิกคิว (ไม่ลบข้อมูลทิ้งแล้ว เปลี่ยนเป็นแค่ 'พัก')
+  // 🌟 ลอจิกยกเลิกคิว (เช็คเวลา 1 ชั่วโมง และเช็คว่าตีไปหรือยัง)
   const handleCancelQueue = async () => {
-    const confirmCancel = confirm("ต้องการยกเลิกคิวเพื่อพัก/เปลี่ยนคู่ ใช่หรือไม่? (สถิติและค่าใช้จ่ายของวันนี้จะยังคงอยู่)");
-    if (!confirmCancel) return;
+    if (!sessionToday || !myRecord) return;
 
-    const { error } = await supabase
-      .from("session_participants")
-      .update({ queue_status: 'resting', preferred_partner_id: null })
-      .eq("id", myRecord.id);
+    const now = new Date();
+    // ดึงเวลาเริ่มจากฐานข้อมูล (ถ้าแอดมินยังไม่ได้กรอก ให้ถือว่าลบได้ฟรีไปก่อน)
+    const sessionStart = sessionToday.start_time ? new Date(sessionToday.start_time) : null;
+    let diffHours = 999; 
 
-    if (!error) {
-      alert("คุณได้พักคิวชั่วคราวแล้ว สามารถกดเช็คบิล หรือลงชื่อกลับมาตีใหม่ได้เลยครับ!");
-      checkUserAndSession(); // รีเฟรชข้อมูล
+    if (sessionStart) {
+      diffHours = (sessionStart.getTime() - now.getTime()) / (1000 * 60 * 60);
     }
+
+    const hasPlayed = (myRecord.games_played_today || 0) > 0;
+
+    if (hasPlayed) {
+      // 📌 กรณีที่ 1: ลงสนามไปแล้ว ขอพักกินน้ำเฉยๆ
+      if (!confirm("คุณตีไปแล้ว ต้องการพักคิวชั่วคราวใช่หรือไม่? (ยอดเงินและสถิติจะถูกบันทึกไว้ตามเดิม)")) return;
+      
+      await supabase.from("session_participants").update({ queue_status: 'resting', preferred_partner_id: null }).eq("id", myRecord.id);
+      alert("พักคิวชั่วคราวแล้วครับ!");
+
+    } else {
+      // 📌 กรณีที่ยังไม่ได้ตีเลย
+      if (diffHours >= 1 || !sessionStart) {
+        // ยกเลิกก่อนเวลา 1 ชม. -> ใจดี ลบทิ้งให้ฟรีๆ ไม่คิดเงิน
+        if (!confirm("คุณยกเลิกก่อนเวลาเริ่มตี 1 ชั่วโมง ระบบจะยกเลิกคิวให้ฟรี (ไม่เสียค่าสนาม) ยืนยันหรือไม่?")) return;
+        
+        await supabase.from("session_participants").delete().eq("id", myRecord.id);
+        alert("ยกเลิกคิวเรียบร้อยแล้ว หวังว่าจะมาเล่นด้วยกันรอบหน้านะครับ!");
+        setMyRecord(null);
+
+      } else {
+        // ยกเลิกกระชั้นชิด < 1 ชม. -> โดนหักค่าสนามนะจ๊ะ!
+        if (!confirm("⚠️ คุณยกเลิกกระชั้นชิด (น้อยกว่า 1 ชม. ก่อนเริ่ม) ระบบจะยังคงคิดค่าสนามเหมาจ่ายตามกติกาก๊วน ยืนยันหรือไม่?")) return;
+        
+        await supabase.from("session_participants").update({ queue_status: 'resting', preferred_partner_id: null }).eq("id", myRecord.id);
+        alert("พักคิวแล้วครับ (ระบบบันทึกค่าสนามตามกติกาเรียบร้อย)");
+      }
+    }
+    
+    checkUserAndSession(); 
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold">กำลังโหลดข้อมูล...</div>;
@@ -140,7 +162,12 @@ export default function Home() {
   const isFull = sessionToday && playerCount >= sessionToday.max_players;
   const todayDateFormatted = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  // เช็กว่าตัวเราอยู่ในสถานะพร้อมตีหรือรอคิวอยู่หรือเปล่า
+  // แปลงเวลาให้ดูง่ายๆ แบบ 18:00 น.
+  const formatTime = (isoString: string) => {
+    if (!isoString) return "";
+    return new Date(isoString).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+  };
+
   const isActiveInQueue = myRecord && ['waiting', 'preparing', 'playing'].includes(myRecord.queue_status);
 
   return (
@@ -161,26 +188,36 @@ export default function Home() {
             <div className="bg-slate-50 rounded-2xl p-5 my-6 border border-slate-200">
               {sessionToday ? (
                 <>
-                  <div className="flex items-center justify-center gap-2 mb-2">
+                  <div className="flex items-center justify-center gap-2 mb-3">
                     <span className="relative flex h-3 w-3">
                       {!isFull && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
                       <span className={`relative inline-flex rounded-full h-3 w-3 ${isFull ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
                     </span>
                     <h3 className="text-[#00537A] font-bold text-lg">
-                      {isFull ? "คิวเต็มแล้วสำหรับวันนี้!" : `ตีแบดวันที่ ${todayDateFormatted}`}
+                      {isFull ? "คิวเต็มแล้วสำหรับวันนี้!" : `เปิดก๊วน ${todayDateFormatted}`}
                     </h3>
                   </div>
                   
-                  <p className="text-sm text-slate-600 font-medium">ค่าสนามเหมา {sessionToday.court_fee_flat} บ. | ค่าลูก {sessionToday.base_shuttle_fee} บ./เกม</p>
+                  {/* 🌟 แสดงเวลาเปิด-ปิด ตรงนี้ครับ */}
+                  {sessionToday.start_time && sessionToday.end_time && (
+                    <div className="bg-white border border-[#A8E8F9] rounded-xl py-2 px-4 mb-4 inline-block shadow-sm">
+                      <p className="text-[#013C58] font-bold text-sm">
+                        ⏰ เวลา: {formatTime(sessionToday.start_time)} - {formatTime(sessionToday.end_time)}
+                      </p>
+                    </div>
+                  )}
+                  
+                  <p className="text-sm text-slate-600 font-medium mt-1">ค่าสนามเหมา {sessionToday.court_fee_flat} บ. | ค่าลูก {sessionToday.base_shuttle_fee} บ./เกม</p>
                   <p className={`text-sm mt-1 mb-4 font-bold ${isFull ? 'text-rose-500' : 'text-[#F5A201]'}`}>
                     กำลังรอตี/อยู่ในคอร์ต: {playerCount} / {sessionToday.max_players} คน
                   </p>
 
+                  {/* คำเตือนเรื่อง 1 ชั่วโมง */}
                   <div className="bg-[#FFFBF0] border-l-4 border-[#F5A201] p-3 mt-4 mb-5 text-left rounded-r-lg shadow-sm">
                     <p className="text-xs text-[#013C58] font-medium leading-relaxed flex items-start gap-1.5">
                       <span className="text-sm">⚠️</span> 
                       <span>
-                        <strong>กฎกติกาก๊วน:</strong> กดพักคิวได้เสมอหากไม่พร้อมเล่น (ยอดเงิน/สถิติจะถูกเก็บไว้) ก่อนกลับอย่าลืมเคลียร์ยอดชำระก่อนทุกครั้ง เพื่อหลีกเลี่ยงการติดแบล็คลิสต์ในรอบถัดไปครับ
+                        <strong>กติกาการยกเลิก:</strong> หากต้องการยกเลิก ต้องกดยกเลิก <u>ก่อนเวลาเริ่มตีอย่างน้อย 1 ชม.</u> (ยกเลิกฟรี) หากยกเลิกกระชั้นชิด ระบบจะคิดค่าสนามเหมาจ่ายอัตโนมัติครับ
                       </span>
                     </p>
                   </div>
@@ -203,7 +240,6 @@ export default function Home() {
                     </div>
                   )}
                   
-                  {/* 🌟 แสดงปุ่มตามสถานะ (แอคทีฟ / พัก / ยังไม่เคยลง) */}
                   {myRecord ? (
                     <div className="space-y-3">
                       {isActiveInQueue ? (
@@ -224,7 +260,6 @@ export default function Home() {
                         </button>
                       )}
 
-                      {/* ปุ่มเช็คบิล โชว์เสมอถ้ายังไม่ได้จ่ายเงิน */}
                       {myRecord.payment_status !== 'paid' && (
                         <a 
                           href="/checkout" 
