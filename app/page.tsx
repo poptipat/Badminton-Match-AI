@@ -181,7 +181,7 @@ export default function Home() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold">กำลังโหลดข้อมูล...</div>;
 
-  // 🔴 โหมดหน้าจอคนติดหนี้ (บล็อกการจองคิวใหม่) 🔴
+  // 🔴 1. โหมดหน้าจอคนติดหนี้ (บล็อกการจองคิวใหม่) 🔴
   if (outstandingDebt) {
     const debtAmount = outstandingDebt.total_amount_due + (outstandingDebt.accumulated_shuttle_fee || 0);
     return (
@@ -203,6 +203,14 @@ export default function Home() {
           <a href="/checkout" className="flex items-center justify-center bg-rose-500 text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-rose-600 transition shadow-md active:scale-95 mb-4">
             💳 ไปหน้าชำระเงิน
           </a>
+
+          {/* 🌟 เพิ่มปุ่มฉุกเฉิน โชว์เฉพาะแอดมิน เพื่อให้ทะลุไปหลังบ้านได้ */}
+          {isAdmin && (
+            <a href="/admin/payments" className="flex items-center justify-center bg-slate-800 text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-slate-900 transition shadow-md active:scale-95 mb-4 border border-slate-700">
+              👑 ไปหน้าตรวจสลิป (ฉุกเฉิน)
+            </a>
+          )}
+
           <button onClick={handleLogout} className="text-slate-400 font-medium text-sm hover:text-slate-600 transition">ออกจากระบบ</button>
         </div>
       </div>
