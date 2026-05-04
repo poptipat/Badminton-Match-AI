@@ -128,15 +128,17 @@ export default function Home() {
 
   const isFull = sessionToday && playerCount >= sessionToday.max_players;
 
-return (
+  // จัดรูปแบบวันที่ปัจจุบันเป็นภาษาไทย
+  const todayDateFormatted = new Date().toLocaleDateString('th-TH', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 font-sans p-4 relative">
       
-      {/* ปุ่มไปหน้าแอดมิน */}
-      <div className="absolute top-4 left-4">
-        <a href="/admin" className="text-gray-400 hover:text-gray-800 transition font-bold text-sm">
-          👑 แอดมิน
-        </a>
-      </div>
+      {/* ลบปุ่มแอดมินมุมซ้ายบนออกไปแล้ว ตามรีเควสต์ */}
 
       <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-md w-full">
         <h1 className="text-3xl font-extrabold mb-2 text-gray-800">🏸 ก๊วนแบดมินตัน</h1>
@@ -160,7 +162,7 @@ return (
                       <span className={`relative inline-flex rounded-full h-3 w-3 ${isFull ? 'bg-red-500' : 'bg-green-500'}`}></span>
                     </span>
                     <h3 className="text-blue-800 font-bold text-lg">
-                      {isFull ? "คิวเต็มแล้วสำหรับวันนี้!" : "เปิดรับสมัครแล้ววันนี้!"}
+                      {isFull ? "คิวเต็มแล้วสำหรับวันนี้!" : `เปิดรับสมัครเข้าตีแบดวันที่ ${todayDateFormatted}`}
                     </h3>
                   </div>
                   
@@ -168,6 +170,16 @@ return (
                   <p className={`text-sm mt-1 mb-4 font-bold ${isFull ? 'text-red-500' : 'text-green-600'}`}>
                     มีคนลงชื่อแล้ว: {playerCount} / {sessionToday.max_players} คน
                   </p>
+
+                  {/* 🌟 กล่องข้อความแจ้งเตือนเรื่องกฎการยกเลิก */}
+                  <div className="bg-yellow-50 border-l-4 border-yellow-500 p-3 mt-4 mb-5 text-left rounded-r-lg shadow-sm">
+                    <p className="text-xs text-yellow-800 font-medium leading-relaxed flex items-start gap-1.5">
+                      <span className="text-sm">⚠️</span> 
+                      <span>
+                        <strong>กฎกติกาก๊วน:</strong> หากลงชื่อแล้วไม่สามารถมาตีได้ กรุณากดยกเลิกก่อนเวลาตีจริงอย่างน้อย 1 ชั่วโมง <u>หากไม่ยกเลิกระบบจะคิดเงินทันที</u> และจะมีผลต่อการจองคิวครั้งถัดไป (ต้องเคลียร์ยอดค้างชำระก่อนลงชื่อใหม่ทุกครั้ง)
+                      </span>
+                    </p>
+                  </div>
 
                   {/* ถ้ายังไม่ได้ลงชื่อ ให้โชว์ Dropdown เลือกล็อกคู่ */}
                   {!isJoined && !isFull && allProfiles.length > 0 && (
@@ -191,19 +203,19 @@ return (
                   {/* แสดงปุ่มตามสถานะ (ลงชื่อแล้ว / คิวเต็ม / กดลงชื่อ) */}
                   {isJoined ? (
                     <div className="space-y-3">
-                    <a 
-                      href="/checkout" 
-                      className="flex items-center justify-center bg-green-500 text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-green-600 transition-all shadow-md"
-                    >
-                      💸 เช็คบิล / กลับบ้าน
-                    </a>
-                    <button 
-                      onClick={handleCancelQueue} 
-                      className="bg-red-100 text-red-600 px-6 py-3 rounded-xl w-full font-bold hover:bg-red-200 transition-all shadow-sm"
-                    >
-                      ยกเลิกการลงชื่อ
-                    </button>
-                  </div>
+                      <a 
+                        href="/checkout" 
+                        className="flex items-center justify-center bg-green-500 text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-green-600 transition-all shadow-md"
+                      >
+                        💸 เช็คบิล / กลับบ้าน
+                      </a>
+                      <button 
+                        onClick={handleCancelQueue} 
+                        className="bg-red-100 text-red-600 px-6 py-3 rounded-xl w-full font-bold hover:bg-red-200 transition-all shadow-sm"
+                      >
+                        ยกเลิกการลงชื่อ
+                      </button>
+                    </div>
                   ) : (
                     <button 
                       onClick={handleJoinQueue} 
@@ -218,9 +230,10 @@ return (
                     </button>
                   )}
 
-                  <div className="mt-4">
-                    <a href="/queue" className="text-blue-600 font-semibold hover:underline flex items-center justify-center gap-1">
-                      ดูกระดานคิว 👉
+                  {/* 🌟 ปุ่มดูกระดานคิว ปรับให้เด่นชัดน่ากดมากขึ้น */}
+                  <div className="mt-5 border-t border-blue-100 pt-5">
+                    <a href="/queue" className="flex items-center justify-center bg-indigo-600 text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-indigo-700 hover:scale-[1.02] transition-all shadow-md active:scale-95">
+                      📋 ดูกระดานจัดคิว 👉
                     </a>
                   </div>
                 </>
