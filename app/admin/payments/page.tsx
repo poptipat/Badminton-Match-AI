@@ -7,10 +7,18 @@ export default function AdminPayments() {
   const [participants, setParticipants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // 🌟 State สำหรับสรุปยอดเงิน
+  const [summary, setSummary] = useState({
+    totalExpected: 0,
+    totalCollected: 0,
+    totalPending: 0,
+    totalUnpaid: 0,
+    totalGames: 0
+  });
+
   useEffect(() => {
     fetchPayments();
     
-    // อัปเดตแบบ Real-time เผื่อมีคนโอนเงินเข้ามาตอนกำลังเปิดหน้าจอ
     const subscription = supabase
       .channel('payment_updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'session_participants' }, fetchPayments)
@@ -23,7 +31,7 @@ export default function AdminPayments() {
     const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).single();
     
     if (session) {
-      // ดึงเฉพาะคนที่กด "ส่งสลิปแล้ว (pending)" หรือ "จ่ายแล้ว (paid)"
+      // 🌟 ดึงข้อมูล "ทุกคน" ในวันนี้ เพื่อมาคำนวณยอดรวม
       const { data } = await supabase
         .from("session_participants")
         .select(`
@@ -32,19 +40,42 @@ export default function AdminPayments() {
           payment_slip_url, 
           total_amount_due, 
           accumulated_shuttle_fee,
+          games_played_today,
           profiles!profile_id(display_name, avatar_url)
         `)
         .eq("session_id", session.id)
-        .in("payment_status", ["pending", "paid"])
-        .order("checkout_time", { ascending: false }); // เรียงคนที่เพิ่งส่งสลิปขึ้นก่อน
+        .order("checkout_time", { ascending: false }); 
         
-      setParticipants(data || []);
+      if (data) {
+        setParticipants(data);
+        
+        // 🌟 คำนวณสรุปยอด
+        let expected = 0, collected = 0, pendingAmt = 0, unpaidAmt = 0, games = 0;
+        
+        data.forEach(p => {
+          const totalFee = (p.total_amount_due || 0) + (p.accumulated_shuttle_fee || 0);
+          expected += totalFee;
+          games += (p.games_played_today || 0);
+
+          if (p.payment_status === 'paid') collected += totalFee;
+          else if (p.payment_status === 'pending') pendingAmt += totalFee;
+          else unpaidAmt += totalFee; // สถานะ unpaid หรือ resting
+        });
+
+        setSummary({
+          totalExpected: expected,
+          totalCollected: collected,
+          totalPending: pendingAmt,
+          totalUnpaid: unpaidAmt,
+          totalGames: games
+        });
+      }
     }
     setLoading(false);
   };
 
   const handleApprove = async (id: string) => {
-    const confirmApprove = confirm("คุณตรวจสอบยอดเงินถูกต้องแล้วใช่หรือไม่?");
+    const confirmApprove = confirm("คุณตรวจสอบยอดเงินในบัญชีว่าเข้าจริงแล้ว ใช่หรือไม่?");
     if (!confirmApprove) return;
 
     await supabase
@@ -55,86 +86,155 @@ export default function AdminPayments() {
     fetchPayments();
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#013C58] text-[#FFBA42] font-bold text-xl">กำลังโหลดรายการโอนเงิน...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-yellow-500 font-bold text-xl">กำลังโหลดระบบการเงิน...</div>;
 
   const pending = participants.filter(p => p.payment_status === 'pending');
   const paid = participants.filter(p => p.payment_status === 'paid');
+  const unpaid = participants.filter(p => p.payment_status === 'unpaid' || p.payment_status === 'resting');
 
   return (
-    <div className="min-h-screen bg-[#013C58] text-white p-4 md:p-6 font-sans">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gray-950 text-white p-4 md:p-6 font-sans">
+      <div className="max-w-5xl mx-auto">
         
         {/* 🌟 Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-[#00537A] pb-5 gap-4">
-          <h1 className="text-2xl md:text-3xl font-black text-[#FFBA42] drop-shadow-md">💰 ตรวจสอบการโอนเงิน</h1>
-          <Link href="/admin" className="w-full md:w-auto bg-[#00537A] border border-[#A8E8F9]/30 text-[#A8E8F9] px-4 py-2.5 rounded-xl hover:bg-[#00537A]/80 transition shadow-md font-bold text-center text-sm md:text-base">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-gray-800 pb-5 gap-4">
+          <h1 className="text-2xl md:text-3xl font-black text-gray-100 flex items-center gap-2">
+            <span className="text-emerald-500">💰</span> ระบบตรวจสลิป & บัญชี
+          </h1>
+          <Link href="/admin" className="w-full md:w-auto bg-gray-800 border border-gray-700 text-gray-300 px-5 py-2.5 rounded-xl hover:bg-gray-700 transition shadow-md font-bold text-center text-sm md:text-base">
             🔙 กลับหน้าจัดคอร์ด
           </Link>
         </div>
 
-        <div className="space-y-6">
-          {/* 🌟 โซนรอยืนยัน (ไฮไลท์ด้วยสีส้ม CI) */}
-          <div className="bg-[#00537A]/40 backdrop-blur-md rounded-3xl p-5 md:p-6 shadow-xl border border-[#F5A201]/50">
-            <h2 className="text-lg md:text-xl font-bold text-[#F5A201] mb-4 flex items-center gap-2">
-              <span className="bg-[#F5A201]/20 p-2 rounded-lg">⏳</span> รอการตรวจสอบ ({pending.length} รายการ)
-            </h2>
+        {/* 🌟 Dashboard สรุปยอดรายวัน */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800 shadow-sm text-center">
+            <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">ยอดรวมที่ต้องได้</p>
+            <p className="text-2xl md:text-3xl font-black text-white">{summary.totalExpected} <span className="text-sm font-medium text-gray-500">฿</span></p>
+          </div>
+          <div className="bg-emerald-900/20 rounded-2xl p-4 border border-emerald-500/30 shadow-sm text-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
+            <p className="text-emerald-400 text-xs font-bold uppercase tracking-wider mb-1">รับเงินแล้ว (Paid)</p>
+            <p className="text-2xl md:text-3xl font-black text-emerald-400">{summary.totalCollected} <span className="text-sm font-medium text-emerald-600">฿</span></p>
+          </div>
+          <div className="bg-rose-900/20 rounded-2xl p-4 border border-rose-500/30 shadow-sm text-center">
+            <p className="text-rose-400 text-xs font-bold uppercase tracking-wider mb-1">ค้างชำระ (Unpaid)</p>
+            <p className="text-2xl md:text-3xl font-black text-rose-400">{summary.totalUnpaid + summary.totalPending} <span className="text-sm font-medium text-rose-600">฿</span></p>
+          </div>
+          <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800 shadow-sm text-center">
+            <p className="text-indigo-400 text-xs font-bold uppercase tracking-wider mb-1">ตีไปทั้งหมด</p>
+            <p className="text-2xl md:text-3xl font-black text-indigo-400">{summary.totalGames} <span className="text-sm font-medium text-indigo-600">เกม</span></p>
+          </div>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-6">
+          
+          {/* 🌟 คอลัมน์ซ้าย: รอตรวจสอบ & ค้างชำระ */}
+          <div className="space-y-6">
             
-            {pending.length === 0 ? <p className="text-[#A8E8F9]/60 py-4 text-center text-sm md:text-base">ยังไม่มีรายการโอนเงินใหม่</p> : (
-              <div className="grid md:grid-cols-2 gap-4">
-                {pending.map(p => {
-                  const total = p.total_amount_due + (p.accumulated_shuttle_fee || 0);
-                  return (
-                    <div key={p.id} className="bg-[#013C58] p-4 rounded-2xl border border-[#F5A201]/30 flex flex-col justify-between shadow-sm">
-                      <div className="flex items-center gap-3 mb-4">
-                        <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name || "Unknown"}&background=F5A201&color=013C58`} className="w-12 h-12 rounded-full object-cover border-2 border-[#F5A201]/50 flex-shrink-0" alt="profile" />
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-white text-base md:text-lg truncate">{p.profiles?.display_name}</p>
-                          <p className="text-sm text-[#FFD35B] font-semibold mt-0.5">ยอดโอน: {total} บาท</p>
+            {/* โซนรอยืนยัน (สีส้ม) */}
+            <div className="bg-orange-900/10 rounded-3xl p-5 md:p-6 shadow-xl border border-orange-500/30">
+              <h2 className="text-lg md:text-xl font-bold text-orange-400 mb-4 flex items-center justify-between">
+                <span className="flex items-center gap-2"><span className="bg-orange-500/20 p-1.5 rounded-lg">⏳</span> รอตรวจสอบสลิป</span>
+                <span className="text-sm bg-orange-500/20 px-3 py-1 rounded-full">{pending.length} รายการ</span>
+              </h2>
+              
+              {pending.length === 0 ? <p className="text-gray-500 py-4 text-center text-sm">ไม่มีสลิปใหม่</p> : (
+                <div className="space-y-4">
+                  {pending.map(p => {
+                    const total = p.total_amount_due + (p.accumulated_shuttle_fee || 0);
+                    return (
+                      <div key={p.id} className="bg-gray-900 p-4 rounded-2xl border border-orange-500/50 flex flex-col justify-between shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=random`} className="w-10 h-10 rounded-full object-cover border border-gray-700" alt="profile" />
+                            <div>
+                              <p className="font-bold text-gray-200">{p.profiles?.display_name}</p>
+                              <p className="text-xs text-gray-400">ตีไป: {p.games_played_today || 0} เกม</p>
+                            </div>
+                          </div>
+                          <p className="text-lg text-yellow-500 font-black">{total} ฿</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          {p.payment_slip_url ? (
+                            <a href={p.payment_slip_url} target="_blank" rel="noreferrer" className="text-center bg-gray-800 border border-gray-700 hover:bg-gray-700 text-gray-300 text-sm font-bold py-2.5 rounded-xl transition">
+                              🔍 ดูสลิป
+                            </a>
+                          ) : (
+                            <div className="text-center bg-gray-800 border border-gray-700 text-gray-600 text-sm font-bold py-2.5 rounded-xl cursor-not-allowed">
+                              ไม่มีรูปสลิป
+                            </div>
+                          )}
+                          <button 
+                            onClick={() => handleApprove(p.id)}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition shadow-md active:scale-95"
+                          >
+                            ✅ ยืนยันยอด
+                          </button>
                         </div>
                       </div>
-                      
-                      <div className="space-y-2.5 mt-2">
-                        {p.payment_slip_url && (
-                          <a href={p.payment_slip_url} target="_blank" rel="noreferrer" className="block text-center bg-[#A8E8F9]/10 border border-[#A8E8F9]/30 hover:bg-[#A8E8F9]/20 text-[#A8E8F9] text-sm font-bold py-2.5 rounded-xl transition">
-                            🔍 ดูรูปสลิป
-                          </a>
-                        )}
-                        <button 
-                          onClick={() => handleApprove(p.id)}
-                          className="w-full bg-[#F5A201] hover:bg-[#FFBA42] text-[#013C58] font-bold py-3 rounded-xl transition shadow-md active:scale-95"
-                        >
-                          ✅ ยืนยันรับเงิน
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* 🌟 โซนจ่ายแล้ว (ใช้สีฟ้าอ่อน A8E8F9 เพื่อความสบายตา) */}
-          <div className="bg-[#00537A]/20 backdrop-blur-md rounded-3xl p-5 md:p-6 shadow-sm border border-[#A8E8F9]/20">
-            <h2 className="text-lg md:text-xl font-bold text-[#A8E8F9] mb-4 flex items-center gap-2">
-              <span className="bg-[#A8E8F9]/20 p-2 rounded-lg text-white">✅</span> ชำระเงินเรียบร้อย ({paid.length} รายการ)
-            </h2>
-            <div className="space-y-3">
-              {paid.length === 0 ? <p className="text-[#A8E8F9]/50 text-center py-4 text-sm md:text-base">ยังไม่มีข้อมูล</p> : (
-                paid.map(p => {
-                   const total = p.total_amount_due + (p.accumulated_shuttle_fee || 0);
-                   return (
-                    <div key={p.id} className="flex items-center justify-between p-3.5 bg-[#013C58] rounded-2xl border border-[#A8E8F9]/10 hover:border-[#A8E8F9]/30 transition">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name || "Unknown"}&background=A8E8F9&color=013C58`} className="w-9 h-9 rounded-full object-cover border border-[#A8E8F9]/30 flex-shrink-0" alt="profile" />
-                        <p className="font-medium text-[#A8E8F9] truncate text-sm md:text-base">{p.profiles?.display_name}</p>
-                      </div>
-                      <span className="text-white font-bold whitespace-nowrap bg-[#00537A] px-3 py-1 rounded-lg border border-[#A8E8F9]/20">{total} ฿</span>
-                    </div>
-                  )
-                })
+                    )
+                  })}
+                </div>
               )}
             </div>
+
+            {/* โซนค้างชำระ (สียแดง/เทา) */}
+            <div className="bg-gray-900/50 rounded-3xl p-5 md:p-6 border border-gray-800">
+              <h2 className="text-lg font-bold text-gray-400 mb-4 flex items-center justify-between">
+                <span className="flex items-center gap-2"><span className="bg-gray-800 p-1.5 rounded-lg">🏃</span> ยังไม่จ่าย (รอกลับบ้าน)</span>
+                <span className="text-sm bg-gray-800 px-3 py-1 rounded-full">{unpaid.length} คน</span>
+              </h2>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                {unpaid.length === 0 ? <p className="text-gray-600 text-center py-4 text-sm">เคลียร์บิลหมดแล้ว</p> : (
+                  unpaid.map(p => {
+                    const total = p.total_amount_due + (p.accumulated_shuttle_fee || 0);
+                    return (
+                      <div key={p.id} className="flex items-center justify-between p-3 bg-gray-950 rounded-xl border border-gray-800">
+                        <div className="flex items-center gap-3">
+                          <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=random`} className="w-8 h-8 rounded-full object-cover grayscale opacity-70" alt="profile" />
+                          <p className="font-medium text-gray-400 text-sm">{p.profiles?.display_name}</p>
+                        </div>
+                        <span className="text-rose-400 font-bold text-sm">{total} ฿</span>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+
           </div>
+
+          {/* 🌟 คอลัมน์ขวา: จ่ายแล้ว */}
+          <div>
+            <div className="bg-emerald-900/10 rounded-3xl p-5 md:p-6 shadow-sm border border-emerald-500/20 h-full">
+              <h2 className="text-lg md:text-xl font-bold text-emerald-400 mb-4 flex items-center justify-between">
+                <span className="flex items-center gap-2"><span className="bg-emerald-500/20 text-emerald-300 p-1.5 rounded-lg">✅</span> รับเงินเรียบร้อย</span>
+                <span className="text-sm bg-emerald-500/20 px-3 py-1 rounded-full">{paid.length} รายการ</span>
+              </h2>
+              <div className="space-y-3">
+                {paid.length === 0 ? <p className="text-emerald-900 text-center py-8 text-sm">ยังไม่มีรายการ</p> : (
+                  paid.map(p => {
+                     const total = p.total_amount_due + (p.accumulated_shuttle_fee || 0);
+                     return (
+                      <div key={p.id} className="flex items-center justify-between p-3.5 bg-gray-900 rounded-2xl border border-emerald-500/10 hover:border-emerald-500/30 transition">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=random`} className="w-9 h-9 rounded-full object-cover border border-gray-700 flex-shrink-0" alt="profile" />
+                          <div className="min-w-0">
+                            <p className="font-bold text-gray-200 truncate text-sm">{p.profiles?.display_name}</p>
+                            <p className="text-[10px] text-emerald-500 font-medium">จ่ายแล้ว</p>
+                          </div>
+                        </div>
+                        <span className="text-emerald-400 font-black whitespace-nowrap bg-emerald-900/30 px-3 py-1.5 rounded-lg border border-emerald-500/20">{total} ฿</span>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+
         </div>
 
       </div>
