@@ -13,6 +13,9 @@ export default function Home() {
   const [selectedPartner, setSelectedPartner] = useState<string>(""); 
   const [isJoined, setIsJoined] = useState(false); // เช็กว่าเราลงชื่อไปหรือยัง?
 
+  // 🌟 State ใหม่: เช็กว่าเป็นแอดมินไหม
+  const [isAdmin, setIsAdmin] = useState(false); 
+
   useEffect(() => {
     checkUserAndSession();
   }, []);
@@ -22,6 +25,10 @@ export default function Home() {
     setUser(user);
 
     if (user) {
+      // 🌟 ดึงข้อมูลโปรไฟล์เพื่อเช็กสถานะแอดมิน
+      const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user.id).single();
+      if (profile?.is_admin) setIsAdmin(true);
+      
       // 1. ดึงข้อมูลก๊วน
       const { data: session } = await supabase
         .from("daily_sessions")
@@ -73,6 +80,7 @@ export default function Home() {
     await supabase.auth.signOut();
     setUser(null);
     setSessionToday(null);
+    setIsAdmin(false); // รีเซ็ตสถานะ
   };
 
   const handleJoinQueue = async () => {
@@ -228,10 +236,17 @@ export default function Home() {
                   )}
 
                   {/* 🌟 ปุ่มดูกระดานคิว ใช้สีส้มแบรนด์ตัดให้เด่น */}
-                  <div className="mt-5 border-t border-slate-200 pt-5">
+                  <div className="mt-5 border-t border-slate-200 pt-5 space-y-3">
                     <a href="/queue" className="flex items-center justify-center bg-[#013458] text-[#A8E8F9] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#FFBA42] transition-all shadow-sm active:scale-95">
                       📋 กระดานจัดคิว
                     </a>
+
+                    {/* ซ่อนปุ่มถ้าไม่ใช่แอดมิน */}
+                    {isAdmin && (
+                      <a href="/admin" className="flex items-center justify-center bg-[#00537A] text-[#F5A201] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#00537A] transition-all shadow-sm active:scale-95 border border-[#FFBA42]/30">
+                        👑 เข้าสู่ระบบแอดมิน
+                      </a>
+                    )}
                   </div>
                 </>
               ) : (

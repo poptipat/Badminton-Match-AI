@@ -6,6 +6,8 @@ import Link from "next/link";
 export default function QueueBoard() {
   const [participants, setParticipants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  // 🌟 State ใหม่: เช็กว่าเป็นแอดมินไหม
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     fetchQueue();
@@ -19,6 +21,15 @@ export default function QueueBoard() {
       supabase.removeChannel(subscription);
     };
   }, []);
+
+  // 🌟 ฟังก์ชันดึง User เพื่อตรวจสอบว่าเป็นแอดมินไหม
+  const checkAdminStatus = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user.id).single();
+      if (profile?.is_admin) setIsAdmin(true);
+    }
+  };
 
   const fetchQueue = async () => {
     const { data: session } = await supabase
@@ -148,9 +159,12 @@ export default function QueueBoard() {
           <h1 className="text-2xl md:text-3xl font-black text-[#013C58]">📋 กระดานจัดคิว</h1>
           
           <div className="flex flex-wrap gap-2 w-full md:w-auto">
+            {/* 🌟 ซ่อนปุ่มแอดมิน ถ้าไม่ได้เป็นแอดมิน */}
+            {isAdmin && (
             <Link href="/admin" className="bg-[#00537A] text-white px-4 py-2.5 rounded-xl shadow-sm hover:bg-[#013C58] transition font-bold text-sm md:text-base flex-1 text-center whitespace-nowrap">
               👑 ระบบแอดมิน
             </Link>
+            )}
             <Link href="/leaderboard" className="bg-[#F5A201] text-white px-4 py-2.5 rounded-xl shadow-sm hover:bg-[#FFBA42] transition font-bold text-sm md:text-base flex-1 text-center whitespace-nowrap">
               🏆 ตารางคะแนน
             </Link>
