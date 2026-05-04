@@ -83,7 +83,8 @@ export default function LeaderboardPage() {
             <div key={index} className="flex items-center justify-between p-4 hover:bg-slate-50 transition">
               <div className="flex items-center gap-3">
                 <span className="text-slate-400 font-bold text-sm w-6 text-center">{index + 1}</span>
-                <img src={item.profiles.avatar_url} className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-100" alt="profile" />
+                {/* 🌟 จุดที่แก้ไข: ใส่ระบบรูปสำรอง (Fallback) ตรงนี้ครับ */}
+                <img src={item.profiles.avatar_url || `https://ui-avatars.com/api/?name=${item.profiles.display_name}&background=random`} className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-100" alt="profile" />
                 <p className="font-bold text-[#013C58] text-sm md:text-base">{item.profiles.display_name}</p>
               </div>
               <div className="text-right flex items-center gap-1.5">
@@ -112,7 +113,7 @@ export default function LeaderboardPage() {
           </Link>
         </div>
 
-        {/* 🌟 แท็บเมนู (Tabs) สลับดูตาราง */}
+        {/* แท็บเมนู (Tabs) สลับดูตาราง */}
         <div className="flex bg-white rounded-2xl p-1.5 shadow-sm border border-slate-200 mb-8 overflow-x-auto custom-scrollbar">
           <button onClick={() => setActiveTab('elo')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm md:text-base whitespace-nowrap transition-all ${activeTab === 'elo' ? 'bg-[#013C58] text-white shadow-md' : 'text-slate-500 hover:text-[#013C58] hover:bg-slate-50'}`}>
             🥇 แรงค์กิ้ง ELO
@@ -125,7 +126,7 @@ export default function LeaderboardPage() {
           </button>
         </div>
 
-        {/* 🌟 ตาราง ELO */}
+        {/* ตาราง ELO */}
         {activeTab === 'elo' && (
           <div className="animate-fade-in">
             <div className="mb-8">
@@ -142,7 +143,7 @@ export default function LeaderboardPage() {
           </div>
         )}
 
-        {/* 🌟 ตาราง คนเหล็ก (ตีเยอะสุดวันนี้) */}
+        {/* ตาราง คนเหล็ก (ตีเยอะสุดวันนี้) */}
         {activeTab === 'ironman' && (
           <div className="animate-fade-in">
             <div className="mb-4 bg-[#F5A201]/10 border border-[#F5A201]/30 p-4 rounded-2xl text-center">
@@ -153,7 +154,7 @@ export default function LeaderboardPage() {
           </div>
         )}
 
-        {/* 🌟 ตาราง เทพชัยชนะ (ชนะเยอะสุดวันนี้) */}
+        {/* ตาราง เทพชัยชนะ (ชนะเยอะสุดวันนี้) */}
         {activeTab === 'wins' && (
           <div className="animate-fade-in">
             <div className="mb-4 bg-[#FFBA42]/10 border border-[#FFBA42]/30 p-4 rounded-2xl text-center">
