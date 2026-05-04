@@ -32,7 +32,7 @@ export default function ProfilePage() {
     const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).single();
     
     if (session) {
-      // ดึงข้อมูลการตีของวันนี้ (เพิ่มการดึง wins, losses, draws)
+      // ดึงข้อมูลการตีของวันนี้
       const { data: participantData } = await supabase
         .from("session_participants")
         .select("games_played_today, accumulated_shuttle_fee, queue_status, wins, losses, draws")
@@ -50,35 +50,38 @@ export default function ProfilePage() {
     setLoading(false);
   };
 
+  // ปรับสี Tier ให้เข้ากับโทน Light Mode CI
   const getTier = (elo: number) => {
-    if (elo >= 1600) return { name: "C (Competitor)", color: "text-purple-400", bg: "bg-purple-900/30", border: "border-purple-500" };
-    if (elo >= 1400) return { name: "P (Pro)", color: "text-red-400", bg: "bg-red-900/30", border: "border-red-500" };
-    if (elo >= 1200) return { name: "S (Standard)", color: "text-yellow-400", bg: "bg-yellow-900/30", border: "border-yellow-500" };
-    if (elo >= 1000) return { name: "N (Novice)", color: "text-green-400", bg: "bg-green-900/30", border: "border-green-500" };
-    return { name: "BG (Beginner)", color: "text-blue-400", bg: "bg-blue-900/30", border: "border-blue-500" };
+    if (elo >= 1600) return { name: "C (Competitor)", color: "text-[#013C58]", bg: "bg-[#013C58]/5", border: "border-[#013C58]" };
+    if (elo >= 1400) return { name: "P (Pro)", color: "text-[#00537A]", bg: "bg-[#00537A]/5", border: "border-[#00537A]" };
+    if (elo >= 1200) return { name: "S (Standard)", color: "text-[#F5A201]", bg: "bg-[#F5A201]/10", border: "border-[#F5A201]" };
+    if (elo >= 1000) return { name: "N (Novice)", color: "text-[#FFBA42]", bg: "bg-[#FFBA42]/10", border: "border-[#FFBA42]" };
+    return { name: "BG (Beginner)", color: "text-[#00537A]", bg: "bg-[#A8E8F9]/20", border: "border-[#A8E8F9]" };
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6 font-sans">
+    <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-6 font-sans">
       <div className="max-w-2xl mx-auto">
         
-        <div className="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
-          <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
+        {/* 🌟 Header & Menu */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-slate-200 pb-5 gap-4">
+          <h1 className="text-2xl md:text-3xl font-black text-[#013C58] drop-shadow-sm">
             🏸 โปรไฟล์ส่วนตัว
           </h1>
-          <Link href="/queue" className="bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
-            กลับหน้ากระดาน
+          <Link href="/queue" className="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl shadow-sm hover:bg-slate-50 hover:text-[#013C58] transition font-bold text-sm md:text-base w-full md:w-auto text-center">
+            🔙 กลับหน้ากระดาน
           </Link>
         </div>
 
-        <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-xl mb-8">
-          <label className="block text-gray-400 mb-2 font-semibold">เลือกชื่อของคุณเพื่อดูสถิติ:</label>
+        {/* 🌟 ช่องค้นหาชื่อ (สไตล์การ์ดคลีนๆ) */}
+        <div className="bg-white p-5 md:p-6 rounded-3xl border border-slate-200 shadow-sm mb-6">
+          <label className="block text-[#00537A] mb-2 font-bold">ค้นหาชื่อของคุณเพื่อดูสถิติ:</label>
           <select 
-            className="w-full bg-gray-800 text-white border border-gray-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl p-3.5 focus:outline-none focus:ring-2 focus:ring-[#F5A201] focus:bg-white transition font-medium"
             value={selectedProfileId}
             onChange={(e) => setSelectedProfileId(e.target.value)}
           >
-            <option value="">-- ค้นหาชื่อของคุณ --</option>
+            <option value="">-- เลือกชื่อผู้เล่น --</option>
             {profiles.map(p => (
               <option key={p.id} value={p.id}>{p.display_name}</option>
             ))}
@@ -86,63 +89,71 @@ export default function ProfilePage() {
         </div>
 
         {loading && selectedProfileId ? (
-          <p className="text-center text-gray-500">กำลังโหลดข้อมูล...</p>
+          <p className="text-center text-[#F5A201] font-bold animate-pulse">กำลังโหลดข้อมูล...</p>
         ) : playerStats ? (
-          <div className="space-y-6">
+          <div className="space-y-5 md:space-y-6">
             
-            <div className={`p-6 rounded-3xl border-l-4 shadow-2xl flex flex-col md:flex-row items-center md:items-start gap-6 ${getTier(playerStats.profile.elo_rating).bg} ${getTier(playerStats.profile.elo_rating).border}`}>
+            {/* 🌟 การ์ดแสดงโปรไฟล์หลัก */}
+            <div className={`bg-white p-5 md:p-6 rounded-3xl border-l-8 shadow-sm flex flex-col md:flex-row items-center md:items-start gap-4 md:gap-6 ${getTier(playerStats.profile.elo_rating).border}`}>
               <img 
                 src={playerStats.profile.avatar_url || `https://ui-avatars.com/api/?name=${playerStats.profile.display_name}&background=random`} 
-                className="w-24 h-24 rounded-full object-cover bg-white ring-4 ring-gray-800 shadow-lg" 
+                className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover bg-slate-100 ring-4 ring-white shadow-md flex-shrink-0" 
                 alt="profile" 
               />
-              <div className="flex-1 text-center md:text-left">
-                <h2 className="text-3xl font-black text-white mb-1">{playerStats.profile.display_name}</h2>
-                <p className={`font-bold text-lg ${getTier(playerStats.profile.elo_rating).color}`}>
+              <div className="flex-1 text-center md:text-left w-full">
+                <h2 className="text-2xl md:text-3xl font-black text-[#013C58] mb-1 truncate">{playerStats.profile.display_name}</h2>
+                <p className={`font-bold text-base md:text-lg ${getTier(playerStats.profile.elo_rating).color}`}>
                   ระดับมือ: {getTier(playerStats.profile.elo_rating).name}
                 </p>
-                <div className="mt-2 inline-block bg-gray-950 px-3 py-1 rounded-lg border border-gray-800 text-sm">
-                  สถานะ: <span className={playerStats.session.queue_status === 'playing' ? 'text-green-400' : 'text-orange-400'}>{playerStats.session.queue_status === 'playing' ? 'กำลังตีอยู่บนคอร์ด' : playerStats.session.queue_status === 'waiting' ? 'กำลังรอคิว' : playerStats.session.queue_status}</span>
+                
+                <div className="mt-3 inline-block bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs md:text-sm font-medium">
+                  สถานะ: <span className={playerStats.session.queue_status === 'playing' ? 'text-[#F5A201] font-bold' : 'text-[#00537A] font-bold'}>
+                    {playerStats.session.queue_status === 'playing' ? 'กำลังตีอยู่บนคอร์ด' : playerStats.session.queue_status === 'waiting' ? 'กำลังรอคิว' : playerStats.session.queue_status}
+                  </span>
                 </div>
                 
-                {/* 🌟 กล่องสถิติ แพ้/ชนะ/เสมอ เพิ่มเข้ามาตรงนี้ 🌟 */}
-                <div className="mt-4 flex justify-center md:justify-start gap-2">
-                  <div className="bg-green-900/40 border border-green-500/50 px-4 py-2 rounded-xl text-center">
-                    <p className="text-[10px] text-green-400 uppercase font-bold">ชนะ</p>
-                    <p className="text-xl font-black text-green-400">{playerStats.session.wins || 0}</p>
+                {/* 🌟 กล่องสถิติ แพ้/ชนะ/เสมอ (ดีไซน์สว่าง) */}
+                <div className="mt-4 flex justify-center md:justify-start gap-2 md:gap-3">
+                  <div className="bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl text-center flex-1 md:flex-none">
+                    <p className="text-[10px] md:text-xs text-emerald-600 uppercase font-bold">ชนะ</p>
+                    <p className="text-lg md:text-xl font-black text-emerald-600">{playerStats.session.wins || 0}</p>
                   </div>
-                  <div className="bg-gray-800/80 border border-gray-600/50 px-4 py-2 rounded-xl text-center">
-                    <p className="text-[10px] text-gray-400 uppercase font-bold">เสมอ</p>
-                    <p className="text-xl font-black text-gray-300">{playerStats.session.draws || 0}</p>
+                  <div className="bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-center flex-1 md:flex-none">
+                    <p className="text-[10px] md:text-xs text-slate-500 uppercase font-bold">เสมอ</p>
+                    <p className="text-lg md:text-xl font-black text-slate-600">{playerStats.session.draws || 0}</p>
                   </div>
-                  <div className="bg-red-900/40 border border-red-500/50 px-4 py-2 rounded-xl text-center">
-                    <p className="text-[10px] text-red-400 uppercase font-bold">แพ้</p>
-                    <p className="text-xl font-black text-red-400">{playerStats.session.losses || 0}</p>
+                  <div className="bg-rose-50 border border-rose-200 px-4 py-2 rounded-xl text-center flex-1 md:flex-none">
+                    <p className="text-[10px] md:text-xs text-rose-500 uppercase font-bold">แพ้</p>
+                    <p className="text-lg md:text-xl font-black text-rose-500">{playerStats.session.losses || 0}</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="bg-gray-900 p-5 rounded-2xl border border-gray-800 flex flex-col items-center justify-center text-center">
-                <p className="text-gray-400 text-sm mb-1">ตีไปแล้ววันนี้</p>
-                <p className="text-4xl font-black text-white">{playerStats.session.games_played_today} <span className="text-lg text-gray-500">เกม</span></p>
+            {/* 🌟 กริตข้อมูลการตี (เกม, เงิน, ELO) */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
+                <p className="text-slate-500 text-xs md:text-sm font-bold mb-1">ตีไปแล้ววันนี้</p>
+                <p className="text-3xl md:text-4xl font-black text-[#013C58]">{playerStats.session.games_played_today} <span className="text-sm md:text-lg text-slate-400 font-bold">เกม</span></p>
               </div>
               
-              {/* 🌟 แก้ไขบั๊กคำนวณเงิน: เอาจำนวนเกม x 27 แบบสดๆ ตรงนี้เลย 🌟 */}
-              <div className="bg-gray-900 p-5 rounded-2xl border border-gray-800 flex flex-col items-center justify-center text-center">
-                <p className="text-gray-400 text-sm mb-1">ค่าลูกแบดสะสม</p>
-                <p className="text-4xl font-black text-red-400">{(playerStats.session.games_played_today || 0) * 27} <span className="text-lg text-gray-500">฿</span></p>
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
+                <p className="text-slate-500 text-xs md:text-sm font-bold mb-1">ค่าลูกแบดสะสม</p>
+                <p className="text-3xl md:text-4xl font-black text-rose-500">{(playerStats.session.games_played_today || 0) * 27} <span className="text-sm md:text-lg text-rose-300 font-bold">฿</span></p>
               </div>
 
-              <div className="bg-gray-900 p-5 rounded-2xl border border-gray-800 flex flex-col items-center justify-center text-center col-span-2 md:col-span-1">
-                <p className="text-gray-400 text-sm mb-1">คะแนน ELO</p>
-                <p className="text-4xl font-black text-yellow-400">{playerStats.profile.elo_rating}</p>
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center col-span-2 md:col-span-1">
+                <p className="text-slate-500 text-xs md:text-sm font-bold mb-1">คะแนน ELO</p>
+                <p className="text-3xl md:text-4xl font-black text-[#F5A201]">{playerStats.profile.elo_rating}</p>
               </div>
             </div>
 
           </div>
-        ) : null}
+        ) : (
+          <div className="text-center py-10 bg-white border border-slate-200 rounded-3xl shadow-sm border-dashed">
+            <p className="text-slate-400 font-medium">โปรดเลือกรายชื่อเพื่อดูสถิติของคุณ</p>
+          </div>
+        )}
 
       </div>
     </div>
