@@ -239,7 +239,7 @@ export default function Home() {
             <img 
               src={user.user_metadata.picture || user.user_metadata.picture_url || user.user_metadata.avatar_url || `https://ui-avatars.com/api/?name=${user.user_metadata.name}&background=random`} 
               alt="Profile" 
-              className="w-24 h-24 rounded-full mx-auto mb-4 border-4 border-[#A8E8F9] object-cover shadow-sm" 
+              className="w-24 h-24 rounded-full mx-auto mb-4 border-4 border-[#00537A] object-cover shadow-sm" 
             />
             <h2 className="text-2xl font-bold mb-2 text-[#013C58]">{user.user_metadata.name}</h2>
             
