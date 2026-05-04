@@ -1,388 +1,255 @@
 "use client";
 import { supabase } from "@/utils/supabase";
 import { useEffect, useState } from "react";
-import Link from "next/link";
 
-export default function AdminDashboard() {
-  const [participants, setParticipants] = useState<any[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+export default function Home() {
+  const [user, setUser] = useState<any>(null);
+  const [sessionToday, setSessionToday] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-
-  // 🌟 State สำหรับเลือกลงคอร์ด (10 คอร์ด)
-  const [selectedCourt, setSelectedCourt] = useState<number>(1);
-  const courts = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-
-  const [showResultModal, setShowResultModal] = useState(false);
-  const [matchToFinish, setMatchToFinish] = useState<any[]>([]); 
+  
+  // States สำหรับฟีเจอร์ใหม่
+  const [playerCount, setPlayerCount] = useState(0); 
+  const [allProfiles, setAllProfiles] = useState<any[]>([]); 
+  const [selectedPartner, setSelectedPartner] = useState<string>(""); 
+  const [isJoined, setIsJoined] = useState(false); // เช็กว่าเราลงชื่อไปหรือยัง?
 
   useEffect(() => {
-    fetchData();
-    const subscription = supabase
-      .channel('admin_updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'session_participants' }, fetchData)
-      .subscribe();
-
-    return () => { supabase.removeChannel(subscription); };
+    checkUserAndSession();
   }, []);
 
-  const fetchData = async () => {
-    const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).single();
-    if (session) {
-      const { data } = await supabase
-        .from("session_participants")
-        .select(`id, profile_id, queue_status, games_played_today, wins, losses, draws, join_time, preferred_partner_id, court_number, accumulated_shuttle_fee, profiles!profile_id(display_name, avatar_url, elo_rating)`)
-        .eq("session_id", session.id)
-        .order("games_played_today", { ascending: true }) 
-        .order("join_time", { ascending: true }); 
-        
-      setParticipants(data || []);
-    }
-    setLoading(false);
-  };
+  const checkUserAndSession = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    setUser(user);
 
-  const getBestPairing = (fourPlayers: any[]) => {
-    const p = fourPlayers;
-    const diff1 = Math.abs((p[0].profiles.elo_rating + p[1].profiles.elo_rating) - (p[2].profiles.elo_rating + p[3].profiles.elo_rating));
-    const diff2 = Math.abs((p[0].profiles.elo_rating + p[2].profiles.elo_rating) - (p[1].profiles.elo_rating + p[3].profiles.elo_rating));
-    const diff3 = Math.abs((p[0].profiles.elo_rating + p[3].profiles.elo_rating) - (p[1].profiles.elo_rating + p[2].profiles.elo_rating));
-
-    const minDiff = Math.min(diff1, diff2, diff3);
-    if (minDiff === diff1) return { teamA: [p[0], p[1]], teamB: [p[2], p[3]], diff: minDiff };
-    if (minDiff === diff2) return { teamA: [p[0], p[2]], teamB: [p[1], p[3]], diff: minDiff };
-    return { teamA: [p[0], p[3]], teamB: [p[1], p[2]], diff: minDiff };
-  };
-
-  const handleAutoMatch = () => {
-    const waitingList = participants.filter(p => p.queue_status === 'waiting');
-    if (waitingList.length < 4) return alert("ต้องมีคนรอคิวอย่างน้อย 4 คนครับ!");
-    
-    const pool = waitingList.slice(0, 6); 
-    
-    let bestMatch: any = null;
-    let minDiff = Infinity;
-
-    if (pool.length === 4) {
-      bestMatch = { ...getBestPairing(pool), players: pool };
-    } else {
-      for (let j = 1; j < pool.length - 2; j++) {
-        for (let k = j + 1; k < pool.length - 1; k++) {
-          for (let l = k + 1; l < pool.length; l++) {
-            const candidates = [pool[0], pool[j], pool[k], pool[l]]; 
-            const pairing = getBestPairing(candidates);
-            
-            if (pairing.diff < minDiff) {
-              minDiff = pairing.diff;
-              bestMatch = { ...pairing, players: candidates };
-            }
-          }
-        }
-      }
-    }
-
-    if (bestMatch) {
-      const message = `
-        🤖 สุ่มจับคู่สำเร็จจากคิวแรกสุด! (ความต่าง ELO: ${bestMatch.diff}แต้ม)
-        -----------------------------
-        ทีม A: ${bestMatch.teamA[0].profiles.display_name} + ${bestMatch.teamA[1].profiles.display_name}
-        ทีม B: ${bestMatch.teamB[0].profiles.display_name} + ${bestMatch.teamB[1].profiles.display_name}
-      `;
-      alert(message);
-      setSelectedIds(bestMatch.players.map((p: any) => p.id));
-    }
-  };
-
-  const toggleSelect = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(item => item !== id));
-    } else {
-      if (selectedIds.length < 4) setSelectedIds([...selectedIds, id]);
-    }
-  };
-
-  const handlePrepareMatch = async () => {
-    if (selectedIds.length !== 4) return alert("ต้องเลือกผู้เล่นให้ครบ 4 คนครับ!");
-    setLoading(true);
-    await supabase.from("session_participants")
-      .update({ queue_status: 'preparing', court_number: selectedCourt })
-      .in('id', selectedIds);
-    setSelectedIds([]);
-    setLoading(false);
-  };
-
-  const handleStartMatch = async (courtNum: number) => {
-    setLoading(true);
-    const playersInCourt = participants.filter(p => p.queue_status === 'preparing' && p.court_number === courtNum);
-    const idsToStart = playersInCourt.map(p => p.id);
-    await supabase.from("session_participants")
-      .update({ queue_status: 'playing' })
-      .in('id', idsToStart);
-    setLoading(false);
-  };
-
-  const handleOpenResultModal = (courtNum: number) => {
-    const courtParticipants = participants.filter(p => p.queue_status === 'playing' && p.court_number === courtNum);
-    setMatchToFinish(courtParticipants);
-    setShowResultModal(true); 
-  };
-
-  // ฟังก์ชันดึงกลับมารอคิว
-  const handleForceClearCourt = async (status: string, courtNum: number) => {
-    if (!confirm(`ต้องการดึงผู้เล่นในคอร์ด ${courtNum} กลับมารอคิวใช่หรือไม่? (จะไม่คิดคะแนน ELO)`)) return;
-    setLoading(true);
-    
-    const playersInCourt = participants.filter(p => p.queue_status === status && p.court_number === courtNum);
-    const idsToClear = playersInCourt.map(p => p.id);
-
-    if (idsToClear.length > 0) {
-      const { error } = await supabase.from("session_participants")
-        .update({ queue_status: 'waiting', court_number: null })
-        .in('id', idsToClear);
-        
-      if (error) {
-        alert("เกิดข้อผิดพลาดในการดึงกลับ: " + error.message);
-      } else {
-        fetchData();
-      }
-    }
-    setLoading(false);
-  };
-
-  const confirmMatchResult = async (resultType: 'teamA' | 'teamB' | 'draw') => {
-    setShowResultModal(false); 
-    setLoading(true);
-
-    const pairing = getBestPairing(matchToFinish);
-    let winners: any[] = [];
-    let isDraw = false;
-
-    if (resultType === 'teamA') winners = pairing.teamA;
-    else if (resultType === 'teamB') winners = pairing.teamB;
-    else isDraw = true;
-
-    for (const p of matchToFinish) {
-      const isWinner = winners.some(w => w.id === p.id);
-      const currentElo = p.profiles?.elo_rating || 1200;
-      let newElo = currentElo;
+    if (user) {
+      // 1. ดึงข้อมูลก๊วน
+      const { data: session } = await supabase
+        .from("daily_sessions")
+        .select("*")
+        .eq("is_active", true)
+        .single();
       
-      if (!isDraw) {
-        newElo = isWinner ? currentElo + 15 : Math.max(0, currentElo - 10);
-      }
+      if (session) {
+        setSessionToday(session);
 
-      await supabase.from("session_participants")
-        .update({
-          queue_status: 'waiting',
-          court_number: null,
-          games_played_today: p.games_played_today + 1,
-          accumulated_shuttle_fee: (p.accumulated_shuttle_fee || 0) + 27,
-          join_time: new Date().toISOString(),
-          wins: (p.wins || 0) + (!isDraw && isWinner ? 1 : 0),
-          losses: (p.losses || 0) + (!isDraw && !isWinner ? 1 : 0),
-          draws: (p.draws || 0) + (isDraw ? 1 : 0)
-        }).eq('id', p.id);
+        // 2. นับจำนวนคนที่ลงคิวไปแล้ว
+        const { count } = await supabase
+          .from("session_participants")
+          .select("*", { count: 'exact', head: true })
+          .eq("session_id", session.id);
+        
+        setPlayerCount(count || 0);
 
-      if (p.profile_id) {
-        await supabase.from("profiles").update({ elo_rating: newElo }).eq('id', p.profile_id);
+        // 3. ดึงรายชื่อเพื่อนมาทำ Dropdown
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, display_name")
+          .neq("id", user.id);
+        
+        setAllProfiles(profiles || []);
+
+        // 4. เช็กว่า "ตัวเราเอง" ลงชื่อไปหรือยัง?
+        const { data: myQueue } = await supabase
+          .from("session_participants")
+          .select("id")
+          .eq("session_id", session.id)
+          .eq("profile_id", user.id)
+          .single();
+        
+        if (myQueue) setIsJoined(true);
       }
     }
-
-    let alertMsg = isDraw ? "⚖️ เสมอกัน! (ไม่หัก/ไม่เพิ่ม ELO)" : `🏆 ทีม ${resultType === 'teamA' ? 'A' : 'B'} ชนะ! (บวก 15 แต้ม)`;
-    alert(`บันทึกผลเรียบร้อย: ${alertMsg}`);
-    
-    fetchData();
     setLoading(false);
   };
 
-  if (loading && participants.length === 0) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold text-xl">กำลังโหลดระบบแอดมิน...</div>;
+  const handleLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: "custom:line" as any,
+      options: { redirectTo: window.location.origin },
+    });
+  };
 
-  const waiting = participants.filter(p => p.queue_status === 'waiting');
-  const preparing = participants.filter(p => p.queue_status === 'preparing');
-  const playing = participants.filter(p => p.queue_status === 'playing');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setSessionToday(null);
+  };
 
-  let modalPairing: any = null;
-  if (showResultModal && matchToFinish.length === 4) {
-    modalPairing = getBestPairing(matchToFinish);
-  }
+  const handleJoinQueue = async () => {
+    if (!sessionToday || !user) return;
+    
+    const { error } = await supabase
+      .from("session_participants")
+      .insert({
+        session_id: sessionToday.id,
+        profile_id: user.id,
+        preferred_partner_id: selectedPartner || null,
+        payment_status: "unpaid",
+        queue_status: "waiting",
+        total_amount_due: sessionToday.court_fee_flat 
+      });
+
+    if (error) {
+      if (error.code === '23505') {
+        alert("คุณได้ลงชื่อในก๊วนนี้ไปแล้วครับ!");
+        setIsJoined(true);
+      } else {
+        alert("เกิดข้อผิดพลาดในการลงชื่อ กรุณาลองใหม่");
+      }
+    } else {
+      alert("✅ ลงชื่อสำเร็จ! ลุยกันเลย 🏸");
+      setPlayerCount(prev => prev + 1); 
+      setIsJoined(true); // เปลี่ยนสถานะว่าลงชื่อแล้ว
+    }
+  };
+
+  // ฟังก์ชันใหม่: ยกเลิกการลงชื่อ
+  const handleCancelQueue = async () => {
+    const confirmCancel = confirm("คุณแน่ใจหรือไม่ที่จะยกเลิกการลงชื่อ? (คิวของคุณจะถูกสละให้คนอื่น)");
+    if (!confirmCancel) return;
+
+    const { error } = await supabase
+      .from("session_participants")
+      .delete()
+      .eq("session_id", sessionToday.id)
+      .eq("profile_id", user.id);
+
+    if (!error) {
+      alert("ยกเลิกการลงชื่อเรียบร้อยแล้ว หวังว่าจะมาเล่นด้วยกันรอบหน้านะครับ!");
+      setIsJoined(false);
+      setPlayerCount(prev => prev - 1); // ลดจำนวนคนลง 1
+      setSelectedPartner("");
+    } else {
+      alert("เกิดข้อผิดพลาดในการยกเลิกคิว");
+    }
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold">กำลังโหลดข้อมูล...</div>;
+
+  const isFull = sessionToday && playerCount >= sessionToday.max_players;
+
+  // จัดรูปแบบวันที่ปัจจุบันเป็นภาษาไทย
+  const todayDateFormatted = new Date().toLocaleDateString('th-TH', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-6 font-sans relative">
-      
-      {/* 🌟 Modal สรุปผล (สไตล์ Minimalist) */}
-      {modalPairing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-md shadow-2xl border border-slate-100">
-            <h3 className="text-2xl font-extrabold text-center text-[#013C58] mb-6">🎮 สรุปผลการแข่งขัน</h3>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-sans p-4 relative">
+      <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 text-center max-w-md w-full">
+        <h1 className="text-3xl font-extrabold mb-2 text-[#013C58]">🏸 ก๊วนแบดมินตัน</h1>
+        <p className="text-slate-500 mb-8 font-medium">ระบบจัดคิวและคิดเงินอัตโนมัติ</p>
+
+        {user ? (
+          <div>
+            <img 
+              src={user.user_metadata.picture || user.user_metadata.picture_url || user.user_metadata.avatar_url || `https://ui-avatars.com/api/?name=${user.user_metadata.name}&background=random`} 
+              alt="Profile" 
+              className="w-24 h-24 rounded-full mx-auto mb-4 border-4 border-[#FFBA42] object-cover shadow-sm" 
+            />
+            <h2 className="text-2xl font-bold mb-2 text-[#013C58]">สวัสดี, {user.user_metadata.name}</h2>
             
-            <div className="space-y-4">
-              <button onClick={() => confirmMatchResult('teamA')} className="w-full bg-white border-2 border-[#A8E8F9] hover:bg-[#A8E8F9]/20 text-left p-4 rounded-2xl transition flex flex-col items-center group shadow-sm">
-                <span className="text-[#00537A] font-bold mb-1 group-hover:scale-105 transition-transform">🏆 ทีม A ชนะ (+15 ELO)</span>
-                <span className="text-slate-600 text-sm text-center">{modalPairing.teamA[0].profiles.display_name} & {modalPairing.teamA[1].profiles.display_name}</span>
-              </button>
-
-              <button onClick={() => confirmMatchResult('draw')} className="w-full bg-slate-100 border border-slate-200 hover:bg-slate-200 p-4 rounded-2xl transition font-bold text-slate-600">
-                ⚖️ เสมอกัน 1-1 เซ็ต (ELO คงเดิม)
-              </button>
-
-              <button onClick={() => confirmMatchResult('teamB')} className="w-full bg-white border-2 border-[#F5A201]/40 hover:bg-[#F5A201]/10 text-left p-4 rounded-2xl transition flex flex-col items-center group shadow-sm">
-                <span className="text-[#F5A201] font-bold mb-1 group-hover:scale-105 transition-transform">🏆 ทีม B ชนะ (+15 ELO)</span>
-                <span className="text-slate-600 text-sm text-center">{modalPairing.teamB[0].profiles.display_name} & {modalPairing.teamB[1].profiles.display_name}</span>
-              </button>
-            </div>
-
-            <button onClick={() => setShowResultModal(false)} className="mt-6 w-full text-slate-400 hover:text-slate-600 font-semibold py-2">
-              ยกเลิก (ยังไม่จบเกม)
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="max-w-7xl mx-auto">
-        {/* 🌟 Header & Menu */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <h1 className="text-2xl md:text-3xl font-black text-[#013C58]">👑 ระบบแอดมินจัดการก๊วน</h1>
-          <div className="flex flex-wrap gap-2 w-full md:w-auto">
-            <Link href="/admin/payments" className="bg-[#00537A] text-white font-bold px-4 py-2.5 rounded-xl hover:bg-[#013C58] transition shadow-sm text-sm md:text-base flex-1 text-center whitespace-nowrap">
-              💰 ตรวจสลิป
-            </Link>
-            <Link href="/leaderboard" className="bg-[#FFBA42] text-[#013C58] font-bold px-4 py-2.5 rounded-xl hover:bg-[#F5A201] hover:text-white transition shadow-sm text-sm md:text-base flex-1 text-center whitespace-nowrap">
-              🏆 ตารางคะแนน
-            </Link>
-            <Link href="/queue" className="bg-white border border-slate-200 text-slate-600 font-bold px-4 py-2.5 rounded-xl hover:bg-slate-50 hover:text-[#013C58] transition shadow-sm text-sm md:text-base flex-1 text-center whitespace-nowrap">
-              กระดานผู้เล่น
-            </Link>
-          </div>
-        </div>
-
-        <div className="grid lg:grid-cols-3 gap-6">
-          
-          {/* 🌟 ฝั่งซ้าย: โซนรอคิว และส่งลงคอร์ด */}
-          <div className="bg-white rounded-3xl p-5 md:p-6 shadow-sm border border-slate-200 lg:col-span-1">
-            <div className="flex justify-between items-center mb-5">
-              <h2 className="text-lg md:text-xl font-bold text-[#F5A201]">จัดคนลงสนาม ({selectedIds.length}/4)</h2>
-              {waiting.length >= 4 && selectedIds.length === 0 && (
-                  <button onClick={handleAutoMatch} className="bg-[#A8E8F9]/30 text-[#00537A] px-3 py-1.5 rounded-lg font-bold hover:bg-[#A8E8F9]/50 transition text-xs md:text-sm whitespace-nowrap">
-                      🤖 จัดคู่ ELO
-                  </button>
-              )}
-            </div>
-
-            <div className="mb-5 flex flex-col gap-3">
-              <select 
-                value={selectedCourt} 
-                onChange={(e) => setSelectedCourt(Number(e.target.value))}
-                className="bg-slate-50 text-slate-800 border border-slate-200 rounded-xl p-3.5 font-bold focus:outline-none focus:ring-2 focus:ring-[#F5A201] focus:bg-white w-full transition"
-              >
-                {courts.map(c => <option key={c} value={c}>📍 เลือกลงคอร์ดที่ {c}</option>)}
-              </select>
-              
-              <button 
-                onClick={handlePrepareMatch}
-                disabled={selectedIds.length !== 4}
-                className={`w-full py-3.5 rounded-xl font-bold transition shadow-sm ${selectedIds.length === 4 ? 'bg-[#F5A201] hover:bg-[#FFBA42] text-white' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
-              >
-                ส่งไปเตรียมตัว คอร์ด {selectedCourt}
-              </button>
-            </div>
-            
-            <div className="space-y-3 h-[400px] md:h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-              {waiting.length === 0 ? <p className="text-slate-400 text-center py-8">ไม่มีคนรอคิว</p> : 
-                waiting.map((p) => {
-                  const isSelected = selectedIds.includes(p.id);
-                  return (
-                    <div 
-                      key={p.id} 
-                      onClick={() => toggleSelect(p.id)}
-                      className={`flex items-center justify-between p-3.5 rounded-2xl cursor-pointer transition-all border ${isSelected ? 'bg-[#FFFBF0] border-[#F5A201] shadow-sm ring-1 ring-[#F5A201]' : 'bg-white border-slate-100 hover:border-[#FFBA42] hover:shadow-sm'}`}
-                    >
-                      <div className="flex items-center gap-3 w-full min-w-0">
-                        <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name || "Unknown"}&background=F5A201&color=fff`} className="w-10 h-10 rounded-full object-cover border border-slate-200 flex-shrink-0" alt="profile" />
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-semibold text-sm md:text-base truncate ${isSelected ? 'text-[#013C58]' : 'text-slate-700'}`}>{p.profiles?.display_name || "ไม่ทราบชื่อ"}</p>
-                          <p className={`text-xs truncate ${isSelected ? 'text-[#F5A201]' : 'text-slate-400'}`}>ตีไป: {p.games_played_today} | ELO: {p.profiles.elo_rating}</p>
-                        </div>
-                      </div>
-                      {isSelected && <span className="font-bold text-[#F5A201] text-lg ml-2">✓</span>}
-                    </div>
-                  );
-                })
-              }
-            </div>
-          </div>
-
-          {/* 🌟 ฝั่งขวา: โซนแสดงคอร์ดต่างๆ */}
-          <div className="bg-white rounded-3xl p-5 md:p-6 shadow-sm border border-slate-200 lg:col-span-2">
-            <h2 className="text-lg md:text-xl font-bold text-[#00537A] mb-6">สถานะคอร์ดปัจจุบัน</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {courts.map(courtNum => {
-                const preps = preparing.filter(p => p.court_number === courtNum);
-                const plays = playing.filter(p => p.court_number === courtNum);
-                
-                if (preps.length === 0 && plays.length === 0) return null; 
-
-                return (
-                  <div key={courtNum} className="bg-slate-50 rounded-2xl p-5 border border-slate-200 shadow-sm">
-                    <h3 className="font-extrabold text-base md:text-lg mb-3 text-[#013C58] border-b border-slate-200 pb-2">📍 คอร์ด {courtNum}</h3>
-                    
-                    {/* กำลังเตรียมตัว */}
-                    {preps.length > 0 && (
-                      <div className="mb-4">
-                        <span className="text-xs md:text-sm font-bold text-[#F5A201] bg-[#FFFBF0] px-2 py-1 rounded-md border border-[#F5A201]/20">🎽 เตรียมลงสนาม ({preps.length}/4)</span>
-                        <div className="mt-3 space-y-2">
-                          {preps.map(p => (
-                            <div key={p.id} className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
-                              <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=A8E8F9&color=013C58`} className="w-6 h-6 rounded-full object-cover flex-shrink-0" alt="profile" />
-                              <span className="text-sm text-slate-700 font-medium truncate">{p.profiles?.display_name}</span>
-                            </div>
-                          ))}
-                        </div>
-                        {preps.length === 4 ? (
-                          <button onClick={() => handleStartMatch(courtNum)} className="mt-4 w-full bg-[#00537A] hover:bg-[#013C58] text-white text-sm font-bold py-3 rounded-xl shadow-sm transition">
-                            ▶️ ให้เริ่มตี
-                          </button>
-                        ) : (
-                          <button onClick={() => handleForceClearCourt('preparing', courtNum)} className="mt-4 w-full bg-white border border-slate-300 hover:bg-slate-100 text-slate-600 text-sm font-bold py-2.5 rounded-xl transition">
-                            🔙 ดึงกลับมารอคิว (คนไม่ครบ)
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {/* กำลังตีอยู่ */}
-                    {plays.length > 0 && (
-                      <div>
-                        <span className="text-xs md:text-sm font-bold text-[#00537A] bg-[#A8E8F9]/30 px-2 py-1 rounded-md border border-[#A8E8F9]/50">🏸 กำลังตีอยู่ ({plays.length}/4)</span>
-                        <div className="mt-3 space-y-2">
-                          {plays.map(p => (
-                            <div key={p.id} className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
-                              <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=00537A&color=fff`} className="w-6 h-6 rounded-full object-cover flex-shrink-0" alt="profile" />
-                              <span className="text-sm text-slate-700 font-medium truncate">{p.profiles?.display_name}</span>
-                            </div>
-                          ))}
-                        </div>
-                        {plays.length === 4 ? (
-                          <button onClick={() => handleOpenResultModal(courtNum)} className="mt-4 w-full bg-rose-500 hover:bg-rose-600 text-white text-sm font-bold py-3 rounded-xl shadow-sm transition">
-                            ⏹ จบเกม (รายงานผล)
-                          </button>
-                        ) : (
-                          <button onClick={() => handleForceClearCourt('playing', courtNum)} className="mt-4 w-full bg-white border border-slate-300 hover:bg-slate-100 text-slate-600 text-sm font-bold py-2.5 rounded-xl transition">
-                            🔙 ดึงกลับมารอคิว (คนไม่ครบ)
-                          </button>
-                        )}
-                      </div>
-                    )}
+            <div className="bg-slate-50 rounded-2xl p-5 my-6 border border-slate-200">
+              {sessionToday ? (
+                <>
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <span className="relative flex h-3 w-3">
+                      {!isFull && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
+                      <span className={`relative inline-flex rounded-full h-3 w-3 ${isFull ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
+                    </span>
+                    <h3 className="text-[#00537A] font-bold text-lg">
+                      {isFull ? "คิวเต็มแล้วสำหรับวันนี้!" : `เปิดรับสมัครเข้าตีแบดวันที่ ${todayDateFormatted}`}
+                    </h3>
                   </div>
-                )
-              })}
+                  
+                  <p className="text-sm text-slate-600 font-medium">ค่าสนามเหมา {sessionToday.court_fee_flat} บ. | ค่าลูก {sessionToday.base_shuttle_fee} บ./เกม</p>
+                  <p className={`text-sm mt-1 mb-4 font-bold ${isFull ? 'text-rose-500' : 'text-[#F5A201]'}`}>
+                    มีคนลงชื่อแล้ว: {playerCount} / {sessionToday.max_players} คน
+                  </p>
 
-              {preparing.length === 0 && playing.length === 0 && (
-                <div className="col-span-1 md:col-span-2 flex items-center justify-center py-16 bg-slate-50/50 rounded-2xl border border-dashed border-slate-300">
-                  <p className="text-slate-400 font-medium text-sm md:text-base">คอร์ดยังว่างทั้งหมด จัดคนลงได้เลยครับ!</p>
+                  {/* 🌟 กล่องข้อความแจ้งเตือนเรื่องกฎการยกเลิก (โทนสีแบรนด์) */}
+                  <div className="bg-[#FFFBF0] border-l-4 border-[#F5A201] p-3 mt-4 mb-5 text-left rounded-r-lg shadow-sm">
+                    <p className="text-xs text-[#013C58] font-medium leading-relaxed flex items-start gap-1.5">
+                      <span className="text-sm">⚠️</span> 
+                      <span>
+                        <strong>กฎกติกาก๊วน:</strong> หากลงชื่อแล้วไม่สามารถมาตีได้ กรุณากดยกเลิกก่อนเวลาตีจริงอย่างน้อย 1 ชั่วโมง <u>หากไม่ยกเลิกระบบจะคิดเงินทันที</u> และจะมีผลต่อการจองคิวครั้งถัดไป (ต้องเคลียร์ยอดค้างชำระก่อนลงชื่อใหม่ทุกครั้ง)
+                      </span>
+                    </p>
+                  </div>
+
+                  {/* ถ้ายังไม่ได้ลงชื่อ ให้โชว์ Dropdown เลือกล็อกคู่ */}
+                  {!isJoined && !isFull && allProfiles.length > 0 && (
+                    <div className="mb-4 text-left">
+                      <label className="block text-sm font-semibold text-[#00537A] mb-1">อยากจับคู่กับใครเป็นพิเศษไหม? (ตัวเลือก)</label>
+                      <select 
+                        className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#F5A201] transition"
+                        value={selectedPartner}
+                        onChange={(e) => setSelectedPartner(e.target.value)}
+                      >
+                        <option value="">-- ไม่ระบุ (ลงคิวเดี่ยว) --</option>
+                        {allProfiles.map(profile => (
+                          <option key={profile.id} value={profile.id}>
+                            {profile.display_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  
+                  {/* แสดงปุ่มตามสถานะ (ลงชื่อแล้ว / คิวเต็ม / กดลงชื่อ) */}
+                  {isJoined ? (
+                    <div className="space-y-3">
+                      <a 
+                        href="/checkout" 
+                        className="flex items-center justify-center bg-[#FFBA42] text-[#013C58] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#F5A201] hover:text-white transition-all shadow-sm"
+                      >
+                        💸 เช็คบิล / กลับบ้าน
+                      </a>
+                      <button 
+                        onClick={handleCancelQueue} 
+                        className="bg-rose-50 text-rose-500 px-6 py-3 rounded-xl w-full font-bold hover:bg-rose-100 transition-all shadow-sm"
+                      >
+                        ยกเลิกการลงชื่อ
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={handleJoinQueue} 
+                      disabled={isFull}
+                      className={`px-6 py-4 rounded-xl w-full font-bold text-lg transition-all shadow-sm active:scale-95
+                        ${isFull 
+                          ? "bg-slate-300 text-slate-500 cursor-not-allowed" 
+                          : "bg-[#00537A] text-white hover:bg-[#013C58] hover:shadow-md"
+                        }`}
+                    >
+                      {isFull ? "คิวเต็มแล้ว 😭" : "ลงชื่อเข้าตีแบด"}
+                    </button>
+                  )}
+
+                  {/* 🌟 ปุ่มดูกระดานคิว ใช้สีส้มแบรนด์ตัดให้เด่น */}
+                  <div className="mt-5 border-t border-slate-200 pt-5">
+                    <a href="/queue" className="flex items-center justify-center bg-[#F5A201] text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#FFBA42] transition-all shadow-sm active:scale-95">
+                      📋 ดูกระดานจัดคิว 👉
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <div className="py-4">
+                  <p className="text-slate-500 font-medium">วันนี้แอดมินยังไม่เปิดก๊วนครับ 😴</p>
                 </div>
               )}
             </div>
-          </div>
 
-        </div>
+            <button onClick={handleLogout} className="text-rose-400 font-medium text-sm hover:text-rose-600 transition mt-2">
+              ออกจากระบบ
+            </button>
+          </div>
+        ) : (
+          <button onClick={handleLogin} className="bg-[#00B900] text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#009900] transition-all shadow-sm flex items-center justify-center gap-2 active:scale-95">
+            เข้าสู่ระบบด้วย LINE
+          </button>
+        )}
       </div>
     </div>
   );
