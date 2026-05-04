@@ -36,27 +36,41 @@ export default function QueueBoard() {
           games_played_today,
           join_time,
           court_number,
-          profiles!profile_id ( display_name, avatar_url )
+          profiles!profile_id ( display_name, avatar_url, elo_rating )
         `)
         .eq("session_id", session.id)
         .order("games_played_today", { ascending: true })
         .order("join_time", { ascending: true });
       
-      if (error) {
-        console.error("เกิดข้อผิดพลาดในการดึงข้อมูล:", error);
-      }
-      
+      if (error) console.error("เกิดข้อผิดพลาดในการดึงข้อมูล:", error);
       setParticipants(queueData || []);
     }
     setLoading(false);
   };
 
+  // 🤖 ฟังก์ชัน AI จัดคู่ให้สมดุลที่สุด (ใช้ตัวเดียวกับหน้า Admin)
+  const getBestPairing = (fourPlayers: any[]) => {
+    if (!fourPlayers || fourPlayers.length !== 4) return null;
+    const p = fourPlayers;
+    const getElo = (player: any) => player.profiles?.elo_rating || 1200;
+
+    const diff1 = Math.abs((getElo(p[0]) + getElo(p[1])) - (getElo(p[2]) + getElo(p[3])));
+    const diff2 = Math.abs((getElo(p[0]) + getElo(p[2])) - (getElo(p[1]) + getElo(p[3])));
+    const diff3 = Math.abs((getElo(p[0]) + getElo(p[3])) - (getElo(p[1]) + getElo(p[2])));
+
+    const minDiff = Math.min(diff1, diff2, diff3);
+    if (minDiff === diff1) return { teamA: [p[0], p[1]], teamB: [p[2], p[3]] };
+    if (minDiff === diff2) return { teamA: [p[0], p[2]], teamB: [p[1], p[3]] };
+    return { teamA: [p[0], p[3]], teamB: [p[1], p[2]] };
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold text-xl">กำลังโหลดกระดานคิว...</div>;
 
   const waiting = participants.filter(p => p.queue_status === 'waiting');
-  const playing = participants.filter(p => p.queue_status === 'playing');
   const preparing = participants.filter(p => p.queue_status === 'preparing');
+  const playing = participants.filter(p => p.queue_status === 'playing');
 
+  // จัดกลุ่มคนที่กำลังเตรียมตัว แยกตามเบอร์คอร์ด
   const preparingByCourt = preparing.reduce((acc, curr) => {
     const court = curr.court_number || 1; 
     if (!acc[court]) acc[court] = [];
@@ -64,11 +78,72 @@ export default function QueueBoard() {
     return acc;
   }, {} as Record<number, any[]>);
 
+  // 🌟 จัดกลุ่มคนที่กำลังตี แยกตามเบอร์คอร์ด (ฟังก์ชันใหม่)
+  const playingByCourt = playing.reduce((acc, curr) => {
+    const court = curr.court_number || 1; 
+    if (!acc[court]) acc[court] = [];
+    acc[court].push(curr);
+    return acc;
+  }, {} as Record<number, any[]>);
+
+  // Component เล็กๆ สำหรับเรนเดอร์คู่
+  const RenderMatchPairing = ({ players }: { players: any[] }) => {
+    const match = getBestPairing(players);
+    if (!match) {
+      // ถ้าคนไม่ครบ 4 คน ให้โชว์เป็นลิสต์ธรรมดา
+      return (
+        <div className="space-y-2">
+          {players.map(p => (
+            <div key={p.id} className="flex items-center gap-2 p-2 bg-white rounded-xl shadow-sm border border-slate-100">
+              <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=random`} className="w-8 h-8 rounded-full object-cover border border-slate-100" alt="profile" />
+              <p className="font-semibold text-slate-700 text-sm truncate">{p.profiles?.display_name}</p>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="relative flex flex-col gap-2">
+        {/* 🟦 ทีม 1 */}
+        <div className="bg-[#A8E8F9]/20 border border-[#A8E8F9]/50 rounded-xl p-2 shadow-sm">
+          <p className="text-[10px] font-black text-[#00537A] mb-1.5 uppercase px-1">🟦 ทีม 1</p>
+          <div className="space-y-1.5">
+            {match.teamA.map(p => (
+              <div key={p.id} className="flex items-center gap-2 bg-white/60 p-1.5 rounded-lg">
+                <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=00537A&color=fff`} className="w-7 h-7 rounded-full object-cover" alt="profile" />
+                <p className="font-bold text-[#013C58] text-sm truncate">{p.profiles?.display_name}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ป้าย VS ตรงกลาง */}
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 bg-white border border-slate-200 shadow-sm rounded-full px-2 py-0.5">
+          <span className="text-[10px] font-black text-slate-400 italic">VS</span>
+        </div>
+
+        {/* 🟧 ทีม 2 */}
+        <div className="bg-[#F5A201]/10 border border-[#F5A201]/30 rounded-xl p-2 shadow-sm">
+          <p className="text-[10px] font-black text-[#F5A201] mb-1.5 uppercase px-1 text-right">ทีม 2 🟧</p>
+          <div className="space-y-1.5">
+            {match.teamB.map(p => (
+              <div key={p.id} className="flex items-center gap-2 bg-white/60 p-1.5 rounded-lg flex-row-reverse text-right">
+                <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=F5A201&color=fff`} className="w-7 h-7 rounded-full object-cover" alt="profile" />
+                <p className="font-bold text-[#F5A201] text-sm truncate">{p.profiles?.display_name}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-6 font-sans text-slate-800">
       <div className="max-w-7xl mx-auto">
         
-        {/* 🌟 Header & Menu (Minimalist CI) */}
+        {/* 🌟 Header & Menu */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 pb-5">
           <h1 className="text-2xl md:text-3xl font-black text-[#013C58]">📋 กระดานจัดคิว</h1>
           
@@ -88,7 +163,7 @@ export default function QueueBoard() {
           </div>
         </div>
 
-        {/* 🌟 ตาราง 3 คอลัมน์ (สไตล์การ์ดสีขาวสะอาดตา) */}
+        {/* 🌟 ตาราง 3 คอลัมน์ */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
           
           {/* คอลัมน์ที่ 1: รอคิว */}
@@ -129,16 +204,7 @@ export default function QueueBoard() {
                 Object.keys(preparingByCourt).map((courtNum) => (
                   <div key={courtNum} className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
                     <h3 className="font-extrabold text-[#013C58] text-sm mb-3 border-b border-slate-200 pb-2">📍 เตรียมลงคอร์ดที่ {courtNum}</h3>
-                    <div className="space-y-2">
-                      {preparingByCourt[Number(courtNum)].map((p: any) => (
-                        <div key={p.id} className="flex items-center gap-3 p-2 bg-white rounded-xl shadow-sm border border-slate-100">
-                          <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name || "Unknown"}&background=00537A&color=fff`} className="w-8 h-8 rounded-full object-cover border border-slate-100" alt="profile" />
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-slate-700 text-sm truncate">{p.profiles?.display_name}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <RenderMatchPairing players={preparingByCourt[Number(courtNum)]} />
                   </div>
                 ))
               )}
@@ -146,21 +212,25 @@ export default function QueueBoard() {
           </div>
 
           {/* คอลัมน์ที่ 3: กำลังลงสนาม */}
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 md:p-6">
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 md:p-6 relative overflow-hidden">
+             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#F5A201] to-[#FFBA42]"></div>
             <h2 className="text-xl font-bold text-[#013C58] mb-5 flex items-center gap-2">
               <span className="bg-[#00537A]/10 text-[#00537A] p-2 rounded-lg border border-[#00537A]/20">🏸</span> กำลังลงสนาม ({playing.length})
             </h2>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {playing.length === 0 ? (
                 <p className="text-slate-400 text-center py-8 text-sm font-medium">คอร์ดยังว่าง</p>
               ) : (
-                playing.map((p) => (
-                  <div key={p.id} className="flex items-center gap-3 p-3.5 bg-[#FFFBF0] rounded-2xl border border-[#F5A201]/30 shadow-sm">
-                    <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name || "Unknown"}&background=F5A201&color=fff`} className="w-10 h-10 rounded-full object-cover border border-slate-200 flex-shrink-0" alt="profile" />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-[#013C58] truncate">{p.profiles?.display_name || "ไม่ทราบชื่อ"}</p>
-                      <p className="text-xs text-[#F5A201] font-bold animate-pulse mt-0.5">อยู่ในคอร์ด</p>
+                Object.keys(playingByCourt).map((courtNum) => (
+                  <div key={courtNum} className="bg-[#FFFBF0] p-4 rounded-2xl border border-[#F5A201]/30">
+                    <div className="flex justify-between items-center mb-3 border-b border-[#F5A201]/20 pb-2">
+                        <h3 className="font-extrabold text-[#F5A201] text-sm">🔥 กำลังตี คอร์ด {courtNum}</h3>
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                        </span>
                     </div>
+                    <RenderMatchPairing players={playingByCourt[Number(courtNum)]} />
                   </div>
                 ))
               )}
