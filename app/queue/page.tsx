@@ -6,11 +6,32 @@ import Link from "next/link";
 export default function QueueBoard() {
   const [participants, setParticipants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  // 🌟 State ใหม่: เช็กว่าเป็นแอดมินไหม
+  
+  // 🌟 State เช็กว่าเป็นแอดมินไหม
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    fetchQueue();
+    // 🌟 มัดรวมฟังก์ชันเช็กแอดมินและการดึงข้อมูลคิวไว้ด้วยกัน
+    const initData = async () => {
+      // 1. เช็กสถานะแอดมินก่อน
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("is_admin")
+          .eq("id", user.id)
+          .single();
+          
+        if (profile?.is_admin) {
+          setIsAdmin(true);
+        }
+      }
+
+      // 2. ดึงข้อมูลกระดานคิว
+      fetchQueue();
+    };
+
+    initData(); // เรียกใช้งานตอนเปิดหน้า
     
     const subscription = supabase
       .channel('queue_updates')
@@ -21,15 +42,6 @@ export default function QueueBoard() {
       supabase.removeChannel(subscription);
     };
   }, []);
-
-  // 🌟 ฟังก์ชันดึง User เพื่อตรวจสอบว่าเป็นแอดมินไหม
-  const checkAdminStatus = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user.id).single();
-      if (profile?.is_admin) setIsAdmin(true);
-    }
-  };
 
   const fetchQueue = async () => {
     const { data: session } = await supabase
@@ -59,7 +71,6 @@ export default function QueueBoard() {
     setLoading(false);
   };
 
-  // 🤖 ฟังก์ชัน AI จัดคู่ให้สมดุลที่สุด (ใช้ตัวเดียวกับหน้า Admin)
   const getBestPairing = (fourPlayers: any[]) => {
     if (!fourPlayers || fourPlayers.length !== 4) return null;
     const p = fourPlayers;
@@ -81,7 +92,6 @@ export default function QueueBoard() {
   const preparing = participants.filter(p => p.queue_status === 'preparing');
   const playing = participants.filter(p => p.queue_status === 'playing');
 
-  // จัดกลุ่มคนที่กำลังเตรียมตัว แยกตามเบอร์คอร์ด
   const preparingByCourt = preparing.reduce((acc, curr) => {
     const court = curr.court_number || 1; 
     if (!acc[court]) acc[court] = [];
@@ -89,7 +99,6 @@ export default function QueueBoard() {
     return acc;
   }, {} as Record<number, any[]>);
 
-  // 🌟 จัดกลุ่มคนที่กำลังตี แยกตามเบอร์คอร์ด (ฟังก์ชันใหม่)
   const playingByCourt = playing.reduce((acc, curr) => {
     const court = curr.court_number || 1; 
     if (!acc[court]) acc[court] = [];
@@ -97,11 +106,9 @@ export default function QueueBoard() {
     return acc;
   }, {} as Record<number, any[]>);
 
-  // Component เล็กๆ สำหรับเรนเดอร์คู่
   const RenderMatchPairing = ({ players }: { players: any[] }) => {
     const match = getBestPairing(players);
     if (!match) {
-      // ถ้าคนไม่ครบ 4 คน ให้โชว์เป็นลิสต์ธรรมดา
       return (
         <div className="space-y-2">
           {players.map(p => (
@@ -116,7 +123,6 @@ export default function QueueBoard() {
 
     return (
       <div className="relative flex flex-col gap-2">
-        {/* 🟦 ทีม 1 */}
         <div className="bg-[#A8E8F9]/20 border border-[#A8E8F9]/50 rounded-xl p-2 shadow-sm">
           <p className="text-[10px] font-black text-[#00537A] mb-1.5 uppercase px-1">🟦 ทีม 1</p>
           <div className="space-y-1.5">
@@ -129,12 +135,10 @@ export default function QueueBoard() {
           </div>
         </div>
 
-        {/* ป้าย VS ตรงกลาง */}
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 bg-white border border-slate-200 shadow-sm rounded-full px-2 py-0.5">
           <span className="text-[10px] font-black text-slate-400 italic">VS</span>
         </div>
 
-        {/* 🟧 ทีม 2 */}
         <div className="bg-[#F5A201]/10 border border-[#F5A201]/30 rounded-xl p-2 shadow-sm">
           <p className="text-[10px] font-black text-[#F5A201] mb-1.5 uppercase px-1 text-right">ทีม 2 🟧</p>
           <div className="space-y-1.5">
@@ -154,16 +158,16 @@ export default function QueueBoard() {
     <div className="min-h-screen bg-slate-50 p-4 md:p-6 font-sans text-slate-800">
       <div className="max-w-7xl mx-auto">
         
-        {/* 🌟 Header & Menu */}
+        {/* Header & Menu */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 pb-5">
           <h1 className="text-2xl md:text-3xl font-black text-[#013C58]">📋 กระดานจัดคิว</h1>
           
           <div className="flex flex-wrap gap-2 w-full md:w-auto">
-            {/* 🌟 ซ่อนปุ่มแอดมิน ถ้าไม่ได้เป็นแอดมิน */}
+            {/* 🌟 แสดงปุ่มแอดมิน ถ้า is_admin เป็น true */}
             {isAdmin && (
-            <Link href="/admin" className="bg-[#00537A] text-white px-4 py-2.5 rounded-xl shadow-sm hover:bg-[#013C58] transition font-bold text-sm md:text-base flex-1 text-center whitespace-nowrap">
-              👑 ระบบแอดมิน
-            </Link>
+              <Link href="/admin" className="bg-[#00537A] text-white px-4 py-2.5 rounded-xl shadow-sm hover:bg-[#013C58] transition font-bold text-sm md:text-base flex-1 text-center whitespace-nowrap">
+                👑 ระบบแอดมิน
+              </Link>
             )}
             <Link href="/leaderboard" className="bg-[#F5A201] text-white px-4 py-2.5 rounded-xl shadow-sm hover:bg-[#FFBA42] transition font-bold text-sm md:text-base flex-1 text-center whitespace-nowrap">
               🏆 ตารางคะแนน
@@ -177,7 +181,7 @@ export default function QueueBoard() {
           </div>
         </div>
 
-        {/* 🌟 ตาราง 3 คอลัมน์ */}
+        {/* ตาราง 3 คอลัมน์ */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
           
           {/* คอลัมน์ที่ 1: รอคิว */}
