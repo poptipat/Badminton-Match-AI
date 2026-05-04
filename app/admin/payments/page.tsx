@@ -28,48 +28,72 @@ export default function AdminPayments() {
   }, []);
 
   const fetchPayments = async () => {
-    const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).single();
+    // 🌟 ดึงข้อมูลบิลทั้งหมดที่สถานะไม่ใช่ paid (คือค้างจ่ายหรือรอตรวจ) จากทุกๆ ก๊วน
+    // และดึงข้อมูลทุกคนในก๊วนของวันนี้ (เผื่อมีคนตีอยู่แต่ยังไม่ได้จ่าย)
     
-    if (session) {
-      // 🌟 ดึงข้อมูล "ทุกคน" ในวันนี้ เพื่อมาคำนวณยอดรวม
-      const { data } = await supabase
-        .from("session_participants")
-        .select(`
-          id, 
-          payment_status, 
-          payment_slip_url, 
-          total_amount_due, 
-          accumulated_shuttle_fee,
-          games_played_today,
-          profiles!profile_id(display_name, avatar_url)
-        `)
-        .eq("session_id", session.id)
-        .order("checkout_time", { ascending: false }); 
-        
-      if (data) {
-        setParticipants(data);
-        
-        // 🌟 คำนวณสรุปยอด
-        let expected = 0, collected = 0, pendingAmt = 0, unpaidAmt = 0, games = 0;
-        
-        data.forEach(p => {
-          const totalFee = (p.total_amount_due || 0) + (p.accumulated_shuttle_fee || 0);
-          expected += totalFee;
-          games += (p.games_played_today || 0);
+    // 1. หาก๊วนที่กำลังเปิดอยู่ (ถ้ามี)
+    const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).single();
+    const currentSessionId = session ? session.id : null;
 
-          if (p.payment_status === 'paid') collected += totalFee;
-          else if (p.payment_status === 'pending') pendingAmt += totalFee;
-          else unpaidAmt += totalFee; // สถานะ unpaid หรือ resting
-        });
+    // 2. ดึงข้อมูล 2 ส่วน:
+    // - คนที่มีบิลค้าง (pending, unpaid, resting) ไม่ว่าก๊วนไหน
+    // - คนที่อยู่ในก๊วนวันนี้ (ไม่ว่าจะสถานะอะไร)
+    
+    let query = supabase
+      .from("session_participants")
+      .select(`
+        id, 
+        payment_status, 
+        payment_slip_url, 
+        total_amount_due, 
+        accumulated_shuttle_fee,
+        games_played_today,
+        session_id,
+        profiles!profile_id(display_name, avatar_url)
+      `)
+      .order("checkout_time", { ascending: false });
 
-        setSummary({
-          totalExpected: expected,
-          totalCollected: collected,
-          totalPending: pendingAmt,
-          totalUnpaid: unpaidAmt,
-          totalGames: games
-        });
-      }
+    // ถ้ามีก๊วนวันนี้ ให้ดึงรวมกัน ถ้าไม่มี ดึงเฉพาะคนที่ค้างจ่าย
+    if (currentSessionId) {
+       query = query.or(`payment_status.in.(pending,unpaid,resting),session_id.eq.${currentSessionId}`);
+    } else {
+       query = query.in("payment_status", ["pending", "unpaid", "resting"]);
+    }
+
+    const { data } = await query;
+        
+    if (data) {
+      setParticipants(data);
+      
+      // 🌟 คำนวณสรุปยอด (คำนวณเฉพาะบิลที่ค้าง + บิลของวันนี้)
+      let expected = 0, collected = 0, pendingAmt = 0, unpaidAmt = 0, games = 0;
+      
+      data.forEach(p => {
+        // คิดยอดรวมเฉพาะก๊วนวันนี้ หรือ ก๊วนเก่าที่ยังไม่ได้จ่าย
+        if (p.session_id === currentSessionId || p.payment_status !== 'paid') {
+           const totalFee = (p.total_amount_due || 0) + (p.accumulated_shuttle_fee || 0);
+           
+           // ไม่รวมยอด 0 บาทของก๊วนเก่า (เช่น คนที่กดลงชื่อแล้วยกเลิกก่อนเวลา)
+           if (totalFee > 0) {
+               expected += totalFee;
+               
+               // นับเกมเฉพาะของวันนี้ หรือคนที่ค้างจ่าย
+               games += (p.games_played_today || 0);
+
+               if (p.payment_status === 'paid') collected += totalFee;
+               else if (p.payment_status === 'pending') pendingAmt += totalFee;
+               else unpaidAmt += totalFee; // สถานะ unpaid หรือ resting
+           }
+        }
+      });
+
+      setSummary({
+        totalExpected: expected,
+        totalCollected: collected,
+        totalPending: pendingAmt,
+        totalUnpaid: unpaidAmt,
+        totalGames: games
+      });
     }
     setLoading(false);
   };
