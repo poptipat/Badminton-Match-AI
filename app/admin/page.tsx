@@ -8,7 +8,7 @@ export default function AdminDashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 🌟 State สำหรับเลือกลงคอร์ด (อัปเดตเป็น 10 คอร์ดแล้ว)
+  // 🌟 State สำหรับเลือกลงคอร์ด (10 คอร์ด)
   const [selectedCourt, setSelectedCourt] = useState<number>(1);
   const courts = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
@@ -83,8 +83,8 @@ export default function AdminDashboard() {
       const message = `
         🤖 สุ่มจับคู่สำเร็จจากคิวแรกสุด! (ความต่าง ELO: ${bestMatch.diff}แต้ม)
         -----------------------------
-        ทีม A (avg. ${(bestMatch.teamA[0].profiles.elo_rating + bestMatch.teamA[1].profiles.elo_rating) / 2}): ${bestMatch.teamA[0].profiles.display_name} + ${bestMatch.teamA[1].profiles.display_name}
-        ทีม B (avg. ${(bestMatch.teamB[0].profiles.elo_rating + bestMatch.teamB[1].profiles.elo_rating) / 2}): ${bestMatch.teamB[0].profiles.display_name} + ${bestMatch.teamB[1].profiles.display_name}
+        ทีม A: ${bestMatch.teamA[0].profiles.display_name} + ${bestMatch.teamA[1].profiles.display_name}
+        ทีม B: ${bestMatch.teamB[0].profiles.display_name} + ${bestMatch.teamB[1].profiles.display_name}
       `;
       alert(message);
       setSelectedIds(bestMatch.players.map((p: any) => p.id));
@@ -125,7 +125,6 @@ export default function AdminDashboard() {
     setShowResultModal(true); 
   };
 
-  // 🌟 ฟังก์ชันใหม่: ดึงคนที่ติดอยู่ในคอร์ดกลับมารอคิว (กรณีคนไม่ครบ 4)
   const handleForceClearCourt = async (status: string, courtNum: number) => {
     if (!confirm(`ต้องการดึงผู้เล่นในคอร์ด ${courtNum} กลับมารอคิวใช่หรือไม่? (จะไม่คิดคะแนน ELO)`)) return;
     setLoading(true);
@@ -141,11 +140,9 @@ export default function AdminDashboard() {
       if (error) {
         alert("เกิดข้อผิดพลาดในการดึงกลับ: " + error.message);
       } else {
-        // 🌟 เติมบรรทัดนี้ เพื่อสั่งให้หน้าเว็บโหลดข้อมูลใหม่ทันทีที่กด OK!
         fetchData();
       }
     }
-      
     setLoading(false);
   };
 
@@ -154,7 +151,6 @@ export default function AdminDashboard() {
     setLoading(true);
 
     const pairing = getBestPairing(matchToFinish);
-    
     let winners: any[] = [];
     let isDraw = false;
 
@@ -165,14 +161,13 @@ export default function AdminDashboard() {
     for (const p of matchToFinish) {
       const isWinner = winners.some(w => w.id === p.id);
       const currentElo = p.profiles?.elo_rating || 1200;
-      
       let newElo = currentElo;
+      
       if (!isDraw) {
         newElo = isWinner ? currentElo + 15 : Math.max(0, currentElo - 10);
       }
 
-      await supabase
-        .from("session_participants")
+      await supabase.from("session_participants")
         .update({
           queue_status: 'waiting',
           court_number: null,
@@ -182,14 +177,10 @@ export default function AdminDashboard() {
           wins: (p.wins || 0) + (!isDraw && isWinner ? 1 : 0),
           losses: (p.losses || 0) + (!isDraw && !isWinner ? 1 : 0),
           draws: (p.draws || 0) + (isDraw ? 1 : 0)
-        })
-        .eq('id', p.id);
+        }).eq('id', p.id);
 
       if (p.profile_id) {
-        await supabase
-          .from("profiles")
-          .update({ elo_rating: newElo })
-          .eq('id', p.profile_id);
+        await supabase.from("profiles").update({ elo_rating: newElo }).eq('id', p.profile_id);
       }
     }
 
@@ -200,7 +191,7 @@ export default function AdminDashboard() {
     setLoading(false);
   };
 
-  if (loading && participants.length === 0) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-white">กำลังโหลดระบบแอดมิน...</div>;
+  if (loading && participants.length === 0) return <div className="min-h-screen flex items-center justify-center bg-[#013C58] text-[#FFBA42] font-bold text-xl">กำลังโหลดระบบแอดมิน...</div>;
 
   const waiting = participants.filter(p => p.queue_status === 'waiting');
   const preparing = participants.filter(p => p.queue_status === 'preparing');
@@ -212,30 +203,31 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-4 md:p-6 font-sans relative">
-      {/* Modal */}
+    <div className="min-h-screen bg-[#013C58] text-white p-4 md:p-6 font-sans relative">
+      
+      {/* 🌟 Modal สรุปผล (Admin Dark Style) */}
       {modalPairing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-3xl p-6 w-full max-w-md shadow-2xl">
-            <h3 className="text-2xl font-bold text-center text-yellow-400 mb-6">🎮 สรุปผลการแข่งขัน</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-[#00537A] rounded-3xl p-6 md:p-8 w-full max-w-md shadow-2xl border border-[#A8E8F9]/30">
+            <h3 className="text-2xl font-extrabold text-center text-[#FFBA42] mb-6">🎮 สรุปผลการแข่งขัน</h3>
             
             <div className="space-y-4">
-              <button onClick={() => confirmMatchResult('teamA')} className="w-full bg-blue-600/20 border border-blue-500 hover:bg-blue-600/40 text-left p-4 rounded-xl transition flex flex-col items-center">
-                <span className="text-blue-400 font-bold mb-1">🏆 ทีม A ชนะ (+15 ELO)</span>
+              <button onClick={() => confirmMatchResult('teamA')} className="w-full bg-[#013C58] border-2 border-[#A8E8F9] hover:bg-[#A8E8F9]/20 text-left p-4 rounded-2xl transition flex flex-col items-center group shadow-md">
+                <span className="text-[#A8E8F9] font-bold mb-1 group-hover:scale-105 transition-transform">🏆 ทีม A ชนะ (+15 ELO)</span>
                 <span className="text-white text-sm text-center">{modalPairing.teamA[0].profiles.display_name} & {modalPairing.teamA[1].profiles.display_name}</span>
               </button>
 
-              <button onClick={() => confirmMatchResult('draw')} className="w-full bg-gray-800 border border-gray-600 hover:bg-gray-700 p-4 rounded-xl transition font-bold text-gray-300">
+              <button onClick={() => confirmMatchResult('draw')} className="w-full bg-[#013C58]/50 border border-[#A8E8F9]/30 hover:bg-[#013C58] p-4 rounded-2xl transition font-bold text-[#A8E8F9]">
                 ⚖️ เสมอกัน 1-1 เซ็ต (ELO คงเดิม)
               </button>
 
-              <button onClick={() => confirmMatchResult('teamB')} className="w-full bg-red-600/20 border border-red-500 hover:bg-red-600/40 text-left p-4 rounded-xl transition flex flex-col items-center">
-                <span className="text-red-400 font-bold mb-1">🏆 ทีม B ชนะ (+15 ELO)</span>
+              <button onClick={() => confirmMatchResult('teamB')} className="w-full bg-[#013C58] border-2 border-[#F5A201] hover:bg-[#F5A201]/20 text-left p-4 rounded-2xl transition flex flex-col items-center group shadow-md">
+                <span className="text-[#F5A201] font-bold mb-1 group-hover:scale-105 transition-transform">🏆 ทีม B ชนะ (+15 ELO)</span>
                 <span className="text-white text-sm text-center">{modalPairing.teamB[0].profiles.display_name} & {modalPairing.teamB[1].profiles.display_name}</span>
               </button>
             </div>
 
-            <button onClick={() => setShowResultModal(false)} className="mt-6 w-full text-gray-500 hover:text-white font-semibold py-2">
+            <button onClick={() => setShowResultModal(false)} className="mt-6 w-full text-[#A8E8F9]/60 hover:text-[#A8E8F9] font-semibold py-2">
               ยกเลิก (ยังไม่จบเกม)
             </button>
           </div>
@@ -243,17 +235,17 @@ export default function AdminDashboard() {
       )}
 
       <div className="max-w-7xl mx-auto">
-        {/* 🌟 Header ปรับให้ซ้อนกันในมือถือ (flex-col) แต่แผ่ออกในจอคอม (md:flex-row) */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-gray-800 pb-4 gap-4">
-          <h1 className="text-2xl md:text-3xl font-extrabold text-yellow-400">👑 ระบบแอดมินจัดการก๊วน</h1>
+        {/* 🌟 Header & Menu */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-[#00537A] pb-5">
+          <h1 className="text-2xl md:text-3xl font-black text-[#FFBA42] drop-shadow-md">👑 ระบบจัดการก๊วน (แอดมิน)</h1>
           <div className="flex flex-wrap gap-2 w-full md:w-auto">
-            <Link href="/admin/payments" className="bg-green-600 text-white font-bold px-3 py-2 md:px-4 rounded-lg hover:bg-green-500 transition shadow-md text-sm md:text-base flex-1 text-center whitespace-nowrap">
+            <Link href="/admin/payments" className="bg-[#F5A201] text-[#013C58] font-bold px-4 py-2.5 rounded-xl hover:bg-[#FFBA42] transition shadow-md text-sm md:text-base flex-1 text-center whitespace-nowrap">
               💰 ตรวจสลิป
             </Link>
-            <Link href="/leaderboard" className="bg-blue-600 text-white font-bold px-3 py-2 md:px-4 rounded-lg hover:bg-blue-500 transition shadow-md text-sm md:text-base flex-1 text-center whitespace-nowrap">
+            <Link href="/leaderboard" className="bg-[#FFBA42] text-[#013C58] font-bold px-4 py-2.5 rounded-xl hover:bg-[#FFD35B] transition shadow-md text-sm md:text-base flex-1 text-center whitespace-nowrap">
               🏆 ตารางคะแนน
             </Link>
-            <Link href="/queue" className="bg-gray-800 text-white font-bold px-3 py-2 md:px-4 rounded-lg hover:bg-gray-700 transition text-sm md:text-base flex-1 text-center whitespace-nowrap">
+            <Link href="/queue" className="bg-[#00537A] border border-[#A8E8F9]/30 text-[#A8E8F9] font-bold px-4 py-2.5 rounded-xl hover:bg-[#00537A]/80 transition shadow-md text-sm md:text-base flex-1 text-center whitespace-nowrap">
               กระดานผู้เล่น
             </Link>
           </div>
@@ -261,22 +253,22 @@ export default function AdminDashboard() {
 
         <div className="grid lg:grid-cols-3 gap-6">
           
-          {/* ฝั่งซ้าย: โซนรอคิว และส่งลงคอร์ด */}
-          <div className="bg-gray-900 rounded-2xl p-4 md:p-6 shadow-2xl border border-gray-800 lg:col-span-1">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg md:text-xl font-bold text-orange-400">จัดคนลงสนาม ({selectedIds.length}/4)</h2>
+          {/* 🌟 ฝั่งซ้าย: โซนรอคิว และส่งลงคอร์ด */}
+          <div className="bg-[#00537A]/40 backdrop-blur-md rounded-3xl p-5 md:p-6 shadow-xl border border-[#A8E8F9]/20 lg:col-span-1">
+            <div className="flex justify-between items-center mb-5">
+              <h2 className="text-lg md:text-xl font-bold text-[#FFD35B]">จัดคนลงสนาม ({selectedIds.length}/4)</h2>
               {waiting.length >= 4 && selectedIds.length === 0 && (
-                  <button onClick={handleAutoMatch} className="bg-gray-700 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-gray-600 text-xs md:text-sm whitespace-nowrap">
+                  <button onClick={handleAutoMatch} className="bg-[#013C58] text-[#F5A201] border border-[#F5A201]/50 px-3 py-1.5 rounded-lg font-bold hover:bg-[#013C58]/80 transition text-xs md:text-sm whitespace-nowrap shadow-sm">
                       🤖 จัดคู่ ELO
                   </button>
               )}
             </div>
 
-            <div className="mb-4 flex flex-col gap-2">
+            <div className="mb-5 flex flex-col gap-3">
               <select 
                 value={selectedCourt} 
                 onChange={(e) => setSelectedCourt(Number(e.target.value))}
-                className="bg-gray-800 text-white border border-gray-700 rounded-lg p-3 font-bold focus:outline-none focus:ring-2 focus:ring-orange-500 w-full"
+                className="bg-[#013C58] text-white border border-[#A8E8F9]/30 rounded-xl p-3.5 font-bold focus:outline-none focus:ring-2 focus:ring-[#FFBA42] w-full transition shadow-inner"
               >
                 {courts.map(c => <option key={c} value={c}>📍 เลือกลงคอร์ดที่ {c}</option>)}
               </select>
@@ -284,30 +276,30 @@ export default function AdminDashboard() {
               <button 
                 onClick={handlePrepareMatch}
                 disabled={selectedIds.length !== 4}
-                className={`w-full py-3 rounded-xl font-bold transition shadow-md ${selectedIds.length === 4 ? 'bg-orange-500 hover:bg-orange-400 text-white animate-pulse' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`}
+                className={`w-full py-3.5 rounded-xl font-bold transition shadow-md ${selectedIds.length === 4 ? 'bg-[#F5A201] hover:bg-[#FFBA42] text-[#013C58] animate-pulse' : 'bg-[#013C58]/50 text-[#A8E8F9]/50 cursor-not-allowed border border-[#013C58]'}`}
               >
                 ส่งไปเตรียมตัว คอร์ด {selectedCourt}
               </button>
             </div>
             
-            <div className="space-y-2 h-[400px] md:h-[500px] overflow-y-auto pr-2">
-              {waiting.length === 0 ? <p className="text-gray-600 text-center py-4">ไม่มีคนรอคิว</p> : 
+            <div className="space-y-3 h-[400px] md:h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+              {waiting.length === 0 ? <p className="text-[#A8E8F9]/50 text-center py-8">ไม่มีคนรอคิว</p> : 
                 waiting.map((p) => {
                   const isSelected = selectedIds.includes(p.id);
                   return (
                     <div 
                       key={p.id} 
                       onClick={() => toggleSelect(p.id)}
-                      className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition border ${isSelected ? 'bg-orange-900/50 border-orange-500' : 'bg-gray-800 border-gray-700 hover:bg-gray-700'}`}
+                      className={`flex items-center justify-between p-3.5 rounded-2xl cursor-pointer transition-all border ${isSelected ? 'bg-[#F5A201]/20 border-[#F5A201] shadow-md ring-1 ring-[#F5A201]' : 'bg-[#013C58] border-[#A8E8F9]/10 hover:border-[#F5A201]/50 hover:shadow-sm'}`}
                     >
                       <div className="flex items-center gap-3 w-full min-w-0">
-                        <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name || "Unknown"}&background=random`} className="w-8 h-8 md:w-10 md:h-10 rounded-full object-cover bg-white flex-shrink-0" alt="profile" />
+                        <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name || "Unknown"}&background=F5A201&color=fff`} className="w-10 h-10 rounded-full object-cover border border-[#A8E8F9]/30 flex-shrink-0" alt="profile" />
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm md:text-base truncate">{p.profiles?.display_name || "ไม่ทราบชื่อ"}</p>
-                          <p className={`text-xs ${isSelected ? 'text-orange-300' : 'text-gray-400'} truncate`}>ตีไป: {p.games_played_today} | ELO: {p.profiles.elo_rating}</p>
+                          <p className={`font-semibold text-sm md:text-base truncate ${isSelected ? 'text-[#FFD35B]' : 'text-white'}`}>{p.profiles?.display_name || "ไม่ทราบชื่อ"}</p>
+                          <p className={`text-xs truncate ${isSelected ? 'text-[#FFD35B]/80' : 'text-[#A8E8F9]/70'}`}>ตีไป: {p.games_played_today} | ELO: {p.profiles.elo_rating}</p>
                         </div>
                       </div>
-                      {isSelected && <span className="font-bold text-orange-400 text-lg ml-2">✓</span>}
+                      {isSelected && <span className="font-bold text-[#F5A201] text-lg ml-2 drop-shadow-md">✓</span>}
                     </div>
                   );
                 })
@@ -315,11 +307,11 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* ฝั่งขวา: โซนแสดงคอร์ดต่างๆ */}
-          <div className="bg-gray-900 rounded-2xl p-4 md:p-6 shadow-2xl border border-gray-800 lg:col-span-2">
-            <h2 className="text-lg md:text-xl font-bold text-green-400 mb-6">สถานะคอร์ดปัจจุบัน</h2>
+          {/* 🌟 ฝั่งขวา: โซนแสดงคอร์ดต่างๆ */}
+          <div className="bg-[#00537A]/40 backdrop-blur-md rounded-3xl p-5 md:p-6 shadow-xl border border-[#A8E8F9]/20 lg:col-span-2">
+            <h2 className="text-lg md:text-xl font-bold text-[#A8E8F9] mb-6">แผงควบคุมคอร์ดปัจจุบัน</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {courts.map(courtNum => {
                 const preps = preparing.filter(p => p.court_number === courtNum);
                 const plays = playing.filter(p => p.court_number === courtNum);
@@ -327,28 +319,27 @@ export default function AdminDashboard() {
                 if (preps.length === 0 && plays.length === 0) return null; 
 
                 return (
-                  <div key={courtNum} className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                    <h3 className="font-bold text-base md:text-lg mb-3 text-white border-b border-gray-700 pb-2">📍 คอร์ด {courtNum}</h3>
+                  <div key={courtNum} className="bg-[#013C58] rounded-2xl p-5 border border-[#A8E8F9]/20 shadow-inner">
+                    <h3 className="font-extrabold text-base md:text-lg mb-3 text-[#FFBA42] border-b border-[#00537A] pb-2">📍 คอร์ด {courtNum}</h3>
                     
                     {/* กำลังเตรียมตัว */}
                     {preps.length > 0 && (
                       <div className="mb-4">
-                        <span className="text-xs md:text-sm font-bold text-blue-400">🎽 เตรียมตัวลงสนาม ({preps.length}/4)</span>
-                        <div className="mt-2 space-y-2">
+                        <span className="text-xs md:text-sm font-bold text-[#A8E8F9] bg-[#00537A] px-2 py-1 rounded-md border border-[#A8E8F9]/30">🎽 เตรียมลงสนาม ({preps.length}/4)</span>
+                        <div className="mt-3 space-y-2">
                           {preps.map(p => (
-                            <div key={p.id} className="flex items-center gap-2 bg-blue-900/20 px-3 py-2 rounded-lg border border-blue-900/50">
-                              <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name || "Unknown"}&background=random`} className="w-6 h-6 rounded-full object-cover bg-white flex-shrink-0" alt="profile" />
-                              <span className="text-sm text-gray-200 truncate">{p.profiles?.display_name}</span>
+                            <div key={p.id} className="flex items-center gap-2 bg-[#00537A]/50 px-3 py-2 rounded-xl border border-[#A8E8F9]/10 shadow-sm">
+                              <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=A8E8F9&color=013C58`} className="w-6 h-6 rounded-full object-cover flex-shrink-0" alt="profile" />
+                              <span className="text-sm text-white font-medium truncate">{p.profiles?.display_name}</span>
                             </div>
                           ))}
                         </div>
-                        {/* 🌟 เช็คปุ่ม: ถ้าคนครบ 4 ให้เริ่มตี ถ้าไม่ครบให้ดึงกลับ */}
                         {preps.length === 4 ? (
-                          <button onClick={() => handleStartMatch(courtNum)} className="mt-3 w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-2.5 rounded-lg shadow-md">
+                          <button onClick={() => handleStartMatch(courtNum)} className="mt-4 w-full bg-[#A8E8F9] hover:bg-white text-[#013C58] text-sm font-bold py-3 rounded-xl shadow-md transition">
                             ▶️ ให้เริ่มตี
                           </button>
                         ) : (
-                          <button onClick={() => handleForceClearCourt('preparing', courtNum)} className="mt-3 w-full bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold py-2.5 rounded-lg shadow-md border border-gray-600">
+                          <button onClick={() => handleForceClearCourt('preparing', courtNum)} className="mt-4 w-full bg-[#013C58] border border-[#A8E8F9]/50 hover:bg-[#00537A] text-[#A8E8F9] text-sm font-bold py-2.5 rounded-xl transition">
                             🔙 ดึงกลับมารอคิว (คนไม่ครบ)
                           </button>
                         )}
@@ -358,22 +349,21 @@ export default function AdminDashboard() {
                     {/* กำลังตีอยู่ */}
                     {plays.length > 0 && (
                       <div>
-                        <span className="text-xs md:text-sm font-bold text-green-400">🏸 กำลังตีอยู่ ({plays.length}/4)</span>
-                        <div className="mt-2 space-y-2">
+                        <span className="text-xs md:text-sm font-bold text-[#F5A201] bg-[#F5A201]/20 px-2 py-1 rounded-md border border-[#F5A201]/30">🏸 กำลังตีอยู่ ({plays.length}/4)</span>
+                        <div className="mt-3 space-y-2">
                           {plays.map(p => (
-                            <div key={p.id} className="flex items-center gap-2 bg-green-900/20 px-3 py-2 rounded-lg border border-green-900/50">
-                              <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name || "Unknown"}&background=random`} className="w-6 h-6 rounded-full object-cover bg-white flex-shrink-0" alt="profile" />
-                              <span className="text-sm text-gray-200 truncate">{p.profiles?.display_name}</span>
+                            <div key={p.id} className="flex items-center gap-2 bg-[#00537A]/50 px-3 py-2 rounded-xl border border-[#F5A201]/20 shadow-sm">
+                              <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=00537A&color=fff`} className="w-6 h-6 rounded-full object-cover flex-shrink-0 border border-[#F5A201]/50" alt="profile" />
+                              <span className="text-sm text-white font-medium truncate">{p.profiles?.display_name}</span>
                             </div>
                           ))}
                         </div>
-                        {/* 🌟 เช็คปุ่ม: ถ้าคนครบ 4 ให้จบเกม ถ้าไม่ครบให้ดึงกลับ */}
                         {plays.length === 4 ? (
-                          <button onClick={() => handleOpenResultModal(courtNum)} className="mt-3 w-full bg-red-600 hover:bg-red-500 text-white text-sm font-bold py-2.5 rounded-lg shadow-md">
+                          <button onClick={() => handleOpenResultModal(courtNum)} className="mt-4 w-full bg-[#F5A201] hover:bg-[#FFBA42] text-[#013C58] text-sm font-bold py-3 rounded-xl shadow-md transition">
                             ⏹ จบเกม (รายงานผล)
                           </button>
                         ) : (
-                          <button onClick={() => handleForceClearCourt('playing', courtNum)} className="mt-3 w-full bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold py-2.5 rounded-lg shadow-md border border-gray-600">
+                          <button onClick={() => handleForceClearCourt('playing', courtNum)} className="mt-4 w-full bg-[#013C58] border border-[#A8E8F9]/50 hover:bg-[#00537A] text-[#A8E8F9] text-sm font-bold py-2.5 rounded-xl transition">
                             🔙 ดึงกลับมารอคิว (คนไม่ครบ)
                           </button>
                         )}
@@ -384,8 +374,8 @@ export default function AdminDashboard() {
               })}
 
               {preparing.length === 0 && playing.length === 0 && (
-                <div className="col-span-1 md:col-span-2 text-center text-gray-600 py-10 bg-gray-800/50 rounded-xl border border-gray-700/50 text-sm md:text-base">
-                  คอร์ดยังว่างทั้งหมด จัดคนลงได้เลยครับ!
+                <div className="col-span-1 md:col-span-2 flex items-center justify-center py-16 bg-[#013C58]/50 rounded-2xl border border-dashed border-[#A8E8F9]/30">
+                  <p className="text-[#A8E8F9]/70 font-medium text-sm md:text-base">คอร์ดยังว่างทั้งหมด จัดคนลงได้เลยครับ!</p>
                 </div>
               )}
             </div>
