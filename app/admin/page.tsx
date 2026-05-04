@@ -133,9 +133,18 @@ export default function AdminDashboard() {
     const playersInCourt = participants.filter(p => p.queue_status === status && p.court_number === courtNum);
     const idsToClear = playersInCourt.map(p => p.id);
 
-    await supabase.from("session_participants")
-      .update({ queue_status: 'waiting', court_number: null })
-      .in('id', idsToClear);
+    if (idsToClear.length > 0) {
+      const { error } = await supabase.from("session_participants")
+        .update({ queue_status: 'waiting', court_number: null })
+        .in('id', idsToClear);
+        
+      if (error) {
+        alert("เกิดข้อผิดพลาดในการดึงกลับ: " + error.message);
+      } else {
+        // 🌟 เติมบรรทัดนี้ เพื่อสั่งให้หน้าเว็บโหลดข้อมูลใหม่ทันทีที่กด OK!
+        fetchData();
+      }
+    }
       
     setLoading(false);
   };
