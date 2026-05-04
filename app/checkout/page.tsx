@@ -29,9 +29,7 @@ export default function CheckoutPage() {
           .eq("profile_id", user.id)
           .single();
 
-        if (error) {
-          console.error("เกิดข้อผิดพลาด:", error);
-        }
+        if (error) console.error("เกิดข้อผิดพลาด:", error);
         setParticipant(partData);
       }
     }
@@ -46,7 +44,6 @@ export default function CheckoutPage() {
     const fileName = `${participant.id}-${Math.random()}.${fileExt}`;
     const filePath = `${fileName}`;
 
-    // 1. อัปโหลดไฟล์ไปที่ Bucket 'slips'
     const { error: uploadError } = await supabase.storage.from('slips').upload(filePath, file);
 
     if (uploadError) {
@@ -56,10 +53,8 @@ export default function CheckoutPage() {
       return;
     }
 
-    // 2. ขอ URL ของรูปภาพ
     const { data: publicUrlData } = supabase.storage.from('slips').getPublicUrl(filePath);
 
-    // 3. อัปเดตสถานะการจ่ายเงิน
     await supabase
       .from("session_participants")
       .update({
@@ -74,89 +69,93 @@ export default function CheckoutPage() {
     setUploading(false);
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50">กำลังโหลดบิลของคุณ...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold text-lg">กำลังโหลดบิลของคุณ...</div>;
 
   if (!participant) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
-      <p className="text-gray-500 mb-4">คุณยังไม่ได้ลงชื่อในก๊วนวันนี้ครับ</p>
-      <Link href="/" className="text-blue-600 underline font-bold">กลับหน้าหลัก</Link>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
+      <p className="text-slate-500 mb-4 font-medium text-lg">คุณยังไม่ได้ลงชื่อในก๊วนวันนี้ครับ</p>
+      <Link href="/" className="text-[#013C58] hover:text-[#F5A201] underline font-bold transition">กลับหน้าหลัก</Link>
     </div>
   );
 
-  // 🌟 ลอจิกการคำนวณเงินใหม่ 🌟
+  // 🌟 ลอจิกการคำนวณเงิน
   const gamesCount = participant.games_played_today || 0;
-  const totalShuttleFee = gamesCount * 27; // เอาจำนวนเกม * 27 บาท
-  const courtFee = 50; // ค่าสนามเหมาจ่าย
-  const grandTotal = totalShuttleFee + courtFee; // ยอดรวมทั้งหมด
+  const totalShuttleFee = gamesCount * 27; 
+  const courtFee = 50; 
+  const grandTotal = totalShuttleFee + courtFee; 
 
-  // สร้าง QR Code พร้อมเพย์แบบระบุยอดเงินเป๊ะๆ (ใช้ grandTotal ที่คำนวณมาใหม่)
   const qrCodeUrl = `https://promptpay.io/${PROMPTPAY_NUMBER}/${grandTotal}`;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 font-sans flex items-center justify-center">
-      <div className="bg-white max-w-md w-full rounded-3xl shadow-xl overflow-hidden border border-gray-100">
+    <div className="min-h-screen bg-slate-50 p-6 font-sans flex items-center justify-center">
+      <div className="bg-white max-w-md w-full rounded-3xl shadow-xl overflow-hidden border border-slate-200">
         
-        {/* หัวบิล */}
-        <div className="bg-blue-600 p-6 text-center text-white">
-          <h1 className="text-2xl font-bold mb-1">💸 สรุปค่าใช้จ่าย</h1>
-          <p className="text-blue-100">คุณ {participant.profiles?.display_name}</p>
+        {/* หัวบิล (โทน CI น้ำเงิน/เหลือง) */}
+        <div className="bg-[#013C58] p-6 text-center text-white">
+          <h1 className="text-2xl font-black mb-1 text-[#FFBA42] drop-shadow-sm">💸 สรุปค่าใช้จ่าย</h1>
+          <p className="text-[#A8E8F9] font-medium">คุณ {participant.profiles?.display_name}</p>
         </div>
 
         <div className="p-6">
-          {/* 🌟 รายละเอียดค่าใช้จ่าย (อัปเดตใหม่) 🌟 */}
-          <div className="bg-gray-50 rounded-xl p-4 mb-6 border border-gray-100">
-            <div className="flex justify-between mb-2 text-gray-600">
+          <div className="bg-slate-50 rounded-2xl p-5 mb-6 border border-slate-200">
+            <div className="flex justify-between mb-3 text-slate-600 font-medium">
               <span>ค่าสนาม (เหมา)</span>
-              <span>{courtFee} บาท</span>
+              <span className="text-[#013C58] font-bold">{courtFee} บาท</span>
             </div>
-            <div className="flex justify-between mb-2 text-gray-600">
+            <div className="flex justify-between mb-3 text-slate-600 font-medium">
               <span>ค่าลูกแบด ({gamesCount} เกม)</span>
-              <span>{totalShuttleFee} บาท</span>
+              <span className="text-[#013C58] font-bold">{totalShuttleFee} บาท</span>
             </div>
-            <hr className="my-3 border-gray-200" />
-            <div className="flex justify-between font-bold text-xl text-gray-800">
+            <hr className="my-4 border-slate-200" />
+            <div className="flex justify-between font-black text-xl text-slate-800 items-end">
               <span>ยอดรวมทั้งสิ้น</span>
-              <span className="text-blue-600">{grandTotal} บาท</span>
+              <span className="text-3xl text-[#F5A201]">{grandTotal} <span className="text-lg">บาท</span></span>
             </div>
           </div>
 
           {/* สถานะการชำระเงิน */}
           {participant.payment_status === 'pending' ? (
-            <div className="text-center p-6 bg-yellow-50 rounded-xl border border-yellow-200">
+            <div className="text-center p-6 bg-[#FFFBF0] rounded-2xl border border-[#F5A201]/30">
               <span className="text-4xl block mb-2">⏳</span>
-              <h2 className="text-yellow-700 font-bold text-lg">ส่งสลิปแล้ว รอแอดมินตรวจสอบ</h2>
-              <p className="text-yellow-600 text-sm mt-1">กลับบ้านพักผ่อนได้เลยครับ!</p>
-              <Link href="/" className="mt-4 inline-block text-blue-600 font-semibold underline">กลับหน้าหลัก</Link>
+              <h2 className="text-[#F5A201] font-bold text-lg">ส่งสลิปแล้ว รอตรวจสอบ</h2>
+              <p className="text-slate-500 text-sm mt-1">กลับบ้านพักผ่อนได้เลยครับ!</p>
+              <Link href="/" className="mt-5 inline-block bg-white border border-slate-200 px-6 py-2 rounded-xl text-slate-600 hover:text-[#013C58] font-semibold transition shadow-sm">กลับหน้าหลัก</Link>
             </div>
           ) : participant.payment_status === 'paid' ? (
-            <div className="text-center p-6 bg-green-50 rounded-xl border border-green-200">
+            <div className="text-center p-6 bg-emerald-50 rounded-2xl border border-emerald-200">
               <span className="text-4xl block mb-2">✅</span>
-              <h2 className="text-green-700 font-bold text-lg">ชำระเงินเสร็จสมบูรณ์</h2>
-              <Link href="/" className="mt-4 inline-block text-blue-600 font-semibold underline">กลับหน้าหลัก</Link>
+              <h2 className="text-emerald-600 font-bold text-lg">ชำระเงินเสร็จสมบูรณ์</h2>
+              <Link href="/" className="mt-5 inline-block bg-white border border-slate-200 px-6 py-2 rounded-xl text-slate-600 hover:text-[#013C58] font-semibold transition shadow-sm">กลับหน้าหลัก</Link>
             </div>
           ) : (
             // โซนจ่ายเงิน (สแกน QR + อัปสลิป)
             <div className="text-center">
-              <p className="text-sm font-semibold text-gray-500 mb-2">สแกน QR Code เพื่อโอนเงิน</p>
-              <img src={qrCodeUrl} alt="PromptPay QR Code" className="w-48 h-48 mx-auto mb-4 border p-2 rounded-xl shadow-sm" />
+              <p className="text-sm font-bold text-slate-500 mb-3 bg-slate-100 py-1.5 rounded-lg inline-block px-4">สแกน QR Code โอนตรงยอดเป๊ะ!</p>
+              <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 inline-block mb-6">
+                <img src={qrCodeUrl} alt="PromptPay QR Code" className="w-48 h-48 mx-auto" />
+              </div>
               
-              <div className="mb-4 text-left">
-                <label className="block text-sm font-bold text-gray-700 mb-2">แนบสลิปโอนเงิน</label>
+              <div className="mb-6 text-left bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <label className="block text-sm font-bold text-[#013C58] mb-2">แนบสลิปโอนเงิน</label>
                 <input 
                   type="file" 
                   accept="image/*"
                   onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-[#00537A] file:text-white hover:file:bg-[#013C58] file:transition file:cursor-pointer cursor-pointer"
                 />
               </div>
 
               <button 
                 onClick={handleUploadSlip}
                 disabled={uploading}
-                className={`w-full py-4 rounded-xl font-bold text-white shadow-md transition ${uploading ? 'bg-gray-400' : 'bg-green-500 hover:bg-green-600'}`}
+                className={`w-full py-4 rounded-xl font-bold text-lg transition shadow-md ${uploading ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-[#F5A201] text-white hover:bg-[#FFBA42] active:scale-95'}`}
               >
-                {uploading ? 'กำลังอัปโหลด...' : 'ยืนยันการชำระเงิน'}
+                {uploading ? 'กำลังอัปโหลดรูป...' : 'ยืนยันการชำระเงิน'}
               </button>
+              
+              <Link href="/" className="block mt-4 text-slate-400 font-medium text-sm hover:text-slate-600 transition">
+                ยังไม่จ่าย ขอกลับไปดูกระดานก่อน
+              </Link>
             </div>
           )}
         </div>

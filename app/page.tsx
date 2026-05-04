@@ -7,13 +7,12 @@ export default function Home() {
   const [sessionToday, setSessionToday] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
-  // States สำหรับฟีเจอร์ใหม่
   const [playerCount, setPlayerCount] = useState(0); 
   const [allProfiles, setAllProfiles] = useState<any[]>([]); 
   const [selectedPartner, setSelectedPartner] = useState<string>(""); 
-  const [isJoined, setIsJoined] = useState(false); // เช็กว่าเราลงชื่อไปหรือยัง?
 
-  // 🌟 State ใหม่: เช็กว่าเป็นแอดมินไหม
+  // 🌟 เก็บข้อมูล "ก๊วนของฉัน" ทั้งก้อน เพื่อเช็กสถานะการจ่ายเงินและการพักคิว
+  const [myRecord, setMyRecord] = useState<any>(null); 
   const [isAdmin, setIsAdmin] = useState(false); 
 
   useEffect(() => {
@@ -25,11 +24,9 @@ export default function Home() {
     setUser(user);
 
     if (user) {
-      // 🌟 ดึงข้อมูลโปรไฟล์เพื่อเช็กสถานะแอดมิน
       const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user.id).single();
       if (profile?.is_admin) setIsAdmin(true);
       
-      // 1. ดึงข้อมูลก๊วน
       const { data: session } = await supabase
         .from("daily_sessions")
         .select("*")
@@ -39,15 +36,15 @@ export default function Home() {
       if (session) {
         setSessionToday(session);
 
-        // 2. นับจำนวนคนที่ลงคิวไปแล้ว
+        // 🌟 นับจำนวนคน เฉพาะคนที่ 'กำลังอยู่ในคิว' เท่านั้น (ไม่นับคนที่พัก)
         const { count } = await supabase
           .from("session_participants")
           .select("*", { count: 'exact', head: true })
-          .eq("session_id", session.id);
+          .eq("session_id", session.id)
+          .in("queue_status", ["waiting", "preparing", "playing"]);
         
         setPlayerCount(count || 0);
 
-        // 3. ดึงรายชื่อเพื่อนมาทำ Dropdown
         const { data: profiles } = await supabase
           .from("profiles")
           .select("id, display_name")
@@ -55,15 +52,15 @@ export default function Home() {
         
         setAllProfiles(profiles || []);
 
-        // 4. เช็กว่า "ตัวเราเอง" ลงชื่อไปหรือยัง?
-        const { data: myQueue } = await supabase
+        // 🌟 ดึงข้อมูลคิวของเรามาเก็บไว้ทั้งแถวเลย
+        const { data: myData } = await supabase
           .from("session_participants")
-          .select("id")
+          .select("*")
           .eq("session_id", session.id)
           .eq("profile_id", user.id)
           .single();
         
-        if (myQueue) setIsJoined(true);
+        setMyRecord(myData || null);
       }
     }
     setLoading(false);
@@ -80,68 +77,71 @@ export default function Home() {
     await supabase.auth.signOut();
     setUser(null);
     setSessionToday(null);
-    setIsAdmin(false); // รีเซ็ตสถานะ
+    setIsAdmin(false);
+    setMyRecord(null);
   };
 
+  // 🌟 ฟังก์ชันลงชื่อ อัปเดตใหม่ให้รองรับการ "กลับมาจากพัก"
   const handleJoinQueue = async () => {
     if (!sessionToday || !user) return;
     
-    const { error } = await supabase
-      .from("session_participants")
-      .insert({
-        session_id: sessionToday.id,
-        profile_id: user.id,
-        preferred_partner_id: selectedPartner || null,
-        payment_status: "unpaid",
-        queue_status: "waiting",
-        total_amount_due: sessionToday.court_fee_flat 
-      });
+    if (myRecord) {
+      // ถ้าเคยมี record แล้ว (แสดงว่าเคยกดพักไป) ให้ดึงกลับมาเป็น waiting
+      const { error } = await supabase
+        .from("session_participants")
+        .update({ 
+          queue_status: 'waiting', 
+          preferred_partner_id: selectedPartner || null 
+        })
+        .eq("id", myRecord.id);
 
-    if (error) {
-      if (error.code === '23505') {
-        alert("คุณได้ลงชื่อในก๊วนนี้ไปแล้วครับ!");
-        setIsJoined(true);
-      } else {
-        alert("เกิดข้อผิดพลาดในการลงชื่อ กรุณาลองใหม่");
+      if (!error) {
+        alert("✅ เข้าคิวต่อเรียบร้อย! ลุยเลย 🏸");
+        checkUserAndSession(); // รีเฟรชข้อมูล
       }
     } else {
-      alert("✅ ลงชื่อสำเร็จ! ลุยกันเลย 🏸");
-      setPlayerCount(prev => prev + 1); 
-      setIsJoined(true); // เปลี่ยนสถานะว่าลงชื่อแล้ว
+      // ถ้าไม่เคยมี ให้ Insert ใหม่
+      const { error } = await supabase
+        .from("session_participants")
+        .insert({
+          session_id: sessionToday.id,
+          profile_id: user.id,
+          preferred_partner_id: selectedPartner || null,
+          payment_status: "unpaid",
+          queue_status: "waiting",
+          total_amount_due: sessionToday.court_fee_flat 
+        });
+
+      if (!error) {
+        alert("✅ ลงชื่อสำเร็จ! ลุยกันเลย 🏸");
+        checkUserAndSession(); // รีเฟรชข้อมูล
+      }
     }
   };
 
-  // ฟังก์ชันใหม่: ยกเลิกการลงชื่อ
+  // 🌟 ฟังก์ชันยกเลิกคิว (ไม่ลบข้อมูลทิ้งแล้ว เปลี่ยนเป็นแค่ 'พัก')
   const handleCancelQueue = async () => {
-    const confirmCancel = confirm("คุณแน่ใจหรือไม่ที่จะยกเลิกการลงชื่อ? (คิวของคุณจะถูกสละให้คนอื่น)");
+    const confirmCancel = confirm("ต้องการยกเลิกคิวเพื่อพัก/เปลี่ยนคู่ ใช่หรือไม่? (สถิติและค่าใช้จ่ายของวันนี้จะยังคงอยู่)");
     if (!confirmCancel) return;
 
     const { error } = await supabase
       .from("session_participants")
-      .delete()
-      .eq("session_id", sessionToday.id)
-      .eq("profile_id", user.id);
+      .update({ queue_status: 'resting', preferred_partner_id: null })
+      .eq("id", myRecord.id);
 
     if (!error) {
-      alert("ยกเลิกการลงชื่อเรียบร้อยแล้ว หวังว่าจะมาเล่นด้วยกันรอบหน้านะครับ!");
-      setIsJoined(false);
-      setPlayerCount(prev => prev - 1); // ลดจำนวนคนลง 1
-      setSelectedPartner("");
-    } else {
-      alert("เกิดข้อผิดพลาดในการยกเลิกคิว");
+      alert("คุณได้พักคิวชั่วคราวแล้ว สามารถกดเช็คบิล หรือลงชื่อกลับมาตีใหม่ได้เลยครับ!");
+      checkUserAndSession(); // รีเฟรชข้อมูล
     }
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold">กำลังโหลดข้อมูล...</div>;
 
   const isFull = sessionToday && playerCount >= sessionToday.max_players;
+  const todayDateFormatted = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  // จัดรูปแบบวันที่ปัจจุบันเป็นภาษาไทย
-  const todayDateFormatted = new Date().toLocaleDateString('th-TH', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  // เช็กว่าตัวเราอยู่ในสถานะพร้อมตีหรือรอคิวอยู่หรือเปล่า
+  const isActiveInQueue = myRecord && ['waiting', 'preparing', 'playing'].includes(myRecord.queue_status);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-sans p-4 relative">
@@ -173,21 +173,19 @@ export default function Home() {
                   
                   <p className="text-sm text-slate-600 font-medium">ค่าสนามเหมา {sessionToday.court_fee_flat} บ. | ค่าลูก {sessionToday.base_shuttle_fee} บ./เกม</p>
                   <p className={`text-sm mt-1 mb-4 font-bold ${isFull ? 'text-rose-500' : 'text-[#F5A201]'}`}>
-                    มีคนลงชื่อแล้ว: {playerCount} / {sessionToday.max_players} คน
+                    กำลังรอตี/อยู่ในคอร์ต: {playerCount} / {sessionToday.max_players} คน
                   </p>
 
-                  {/* 🌟 กล่องข้อความแจ้งเตือนเรื่องกฎการยกเลิก (โทนสีแบรนด์) */}
                   <div className="bg-[#FFFBF0] border-l-4 border-[#F5A201] p-3 mt-4 mb-5 text-left rounded-r-lg shadow-sm">
                     <p className="text-xs text-[#013C58] font-medium leading-relaxed flex items-start gap-1.5">
                       <span className="text-sm">⚠️</span> 
                       <span>
-                        <strong>กฎกติกาก๊วน:</strong> หากลงชื่อแล้วไม่สามารถมาตีได้ กรุณากดยกเลิกก่อนเวลาตีจริงอย่างน้อย 1 ชั่วโมง <u>หากไม่ยกเลิกระบบจะคิดเงินทันที</u> และจะมีผลต่อการจองคิวครั้งถัดไป (ต้องเคลียร์ยอดค้างชำระก่อนลงชื่อใหม่ทุกครั้ง)
+                        <strong>กฎกติกาก๊วน:</strong> กดพักคิวได้เสมอหากไม่พร้อมเล่น (ยอดเงิน/สถิติจะถูกเก็บไว้) ก่อนกลับอย่าลืมเคลียร์ยอดชำระก่อนทุกครั้ง เพื่อหลีกเลี่ยงการติดแบล็คลิสต์ในรอบถัดไปครับ
                       </span>
                     </p>
                   </div>
 
-                  {/* ถ้ายังไม่ได้ลงชื่อ ให้โชว์ Dropdown เลือกล็อกคู่ */}
-                  {!isJoined && !isFull && allProfiles.length > 0 && (
+                  {!isActiveInQueue && !isFull && allProfiles.length > 0 && (
                     <div className="mb-4 text-left">
                       <label className="block text-sm font-semibold text-[#00537A] mb-1">อยากจับคู่กับใครเป็นพิเศษไหม? (ตัวเลือก)</label>
                       <select 
@@ -205,21 +203,36 @@ export default function Home() {
                     </div>
                   )}
                   
-                  {/* แสดงปุ่มตามสถานะ (ลงชื่อแล้ว / คิวเต็ม / กดลงชื่อ) */}
-                  {isJoined ? (
+                  {/* 🌟 แสดงปุ่มตามสถานะ (แอคทีฟ / พัก / ยังไม่เคยลง) */}
+                  {myRecord ? (
                     <div className="space-y-3">
-                      <a 
-                        href="/checkout" 
-                        className="flex items-center justify-center bg-[#FFBA42] text-[#013C58] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#F5A201] hover:text-white transition-all shadow-sm"
-                      >
-                        💸 เช็คบิล / กลับบ้าน
-                      </a>
-                      <button 
-                        onClick={handleCancelQueue} 
-                        className="bg-rose-50 text-rose-500 px-6 py-3 rounded-xl w-full font-bold hover:bg-rose-100 transition-all shadow-sm"
-                      >
-                        ยกเลิกการลงชื่อ
-                      </button>
+                      {isActiveInQueue ? (
+                        <button 
+                          onClick={handleCancelQueue} 
+                          className="bg-rose-50 text-rose-500 px-6 py-3 rounded-xl w-full font-bold hover:bg-rose-100 transition-all shadow-sm"
+                        >
+                          ยกเลิกการลงคิว (พักก่อน)
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={handleJoinQueue} 
+                          disabled={isFull}
+                          className={`px-6 py-4 rounded-xl w-full font-bold text-lg transition-all shadow-sm active:scale-95
+                            ${isFull ? "bg-slate-300 text-slate-500 cursor-not-allowed" : "bg-[#00537A] text-white hover:bg-[#013C58] hover:shadow-md"}`}
+                        >
+                          {isFull ? "คิวเต็มแล้ว 😭" : "ลงชื่อกลับเข้าคิวใหม่"}
+                        </button>
+                      )}
+
+                      {/* ปุ่มเช็คบิล โชว์เสมอถ้ายังไม่ได้จ่ายเงิน */}
+                      {myRecord.payment_status !== 'paid' && (
+                        <a 
+                          href="/checkout" 
+                          className="flex items-center justify-center bg-[#FFBA42] text-[#013C58] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#F5A201] hover:text-white transition-all shadow-sm"
+                        >
+                          💸 เช็คบิล / กลับบ้าน
+                        </a>
+                      )}
                     </div>
                   ) : (
                     <button 
@@ -235,13 +248,11 @@ export default function Home() {
                     </button>
                   )}
 
-                  {/* 🌟 ปุ่มดูกระดานคิว ใช้สีส้มแบรนด์ตัดให้เด่น */}
                   <div className="mt-5 border-t border-slate-200 pt-5 space-y-3">
-                    <a href="/queue" className="flex items-center justify-center bg-[#013458] text-[#A8E8F9] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#FFBA42] transition-all shadow-sm active:scale-95">
+                    <a href="/queue" className="flex items-center justify-center bg-[#013458] text-[#A8E8F9] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#FFBA42] hover:text-[#013C58] transition-all shadow-sm active:scale-95">
                       📋 กระดานจัดคิว
                     </a>
 
-                    {/* ซ่อนปุ่มถ้าไม่ใช่แอดมิน */}
                     {isAdmin && (
                       <a href="/admin" className="flex items-center justify-center bg-[#013458] text-[#F5A201] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#00537A] transition-all shadow-sm active:scale-95 border border-[#FFBA42]/30">
                         👑 เข้าสู่ระบบแอดมิน
