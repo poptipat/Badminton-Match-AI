@@ -106,7 +106,9 @@ export default function AdminDashboard() {
       .update({ queue_status: 'preparing', court_number: selectedCourt })
       .in('id', selectedIds);
     setSelectedIds([]);
-    setLoading(false);
+    
+    // 🌟 เติมบรรทัดนี้: โหลดข้อมูลใหม่ทันที ทำให้หน้าแอดมินรีเฟรชเอง
+    fetchData();
   };
 
   const handleStartMatch = async (courtNum: number) => {
@@ -116,7 +118,9 @@ export default function AdminDashboard() {
     await supabase.from("session_participants")
       .update({ queue_status: 'playing' })
       .in('id', idsToStart);
-    setLoading(false);
+      
+    // 🌟 เติมบรรทัดนี้: โหลดข้อมูลใหม่ทันที
+    fetchData();
   };
 
   const handleOpenResultModal = (courtNum: number) => {
