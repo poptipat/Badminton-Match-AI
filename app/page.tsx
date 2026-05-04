@@ -243,7 +243,7 @@ export default function Home() {
 
                     {/* ซ่อนปุ่มถ้าไม่ใช่แอดมิน */}
                     {isAdmin && (
-                      <a href="/admin" className="flex items-center justify-center bg-[#00537A] text-[#F5A201] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#00537A] transition-all shadow-sm active:scale-95 border border-[#FFBA42]/30">
+                      <a href="/admin" className="flex items-center justify-center bg-[#013458] text-[#F5A201] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#00537A] transition-all shadow-sm active:scale-95 border border-[#FFBA42]/30">
                         👑 เข้าสู่ระบบแอดมิน
                       </a>
                     )}
