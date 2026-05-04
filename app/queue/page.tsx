@@ -124,7 +124,7 @@ export default function QueueBoard() {
     return (
       <div className="relative flex flex-col gap-2">
         <div className="bg-[#A8E8F9]/20 border border-[#A8E8F9]/50 rounded-xl p-2 shadow-sm">
-          <p className="text-[10px] font-black text-[#00537A] mb-1.5 uppercase px-1">🟦 ทีม 1</p>
+          <p className="text-[10px] font-black text-[#00537A] mb-1.5 uppercase px-1">🟦 ทีม A</p>
           <div className="space-y-1.5">
             {match.teamA.map(p => (
               <div key={p.id} className="flex items-center gap-2 bg-white/60 p-1.5 rounded-lg">
@@ -140,7 +140,7 @@ export default function QueueBoard() {
         </div>
 
         <div className="bg-[#F5A201]/10 border border-[#F5A201]/30 rounded-xl p-2 shadow-sm">
-          <p className="text-[10px] font-black text-[#F5A201] mb-1.5 uppercase px-1 text-right">ทีม 2 🟧</p>
+          <p className="text-[10px] font-black text-[#F5A201] mb-1.5 uppercase px-1 text-right">ทีม B 🟧</p>
           <div className="space-y-1.5">
             {match.teamB.map(p => (
               <div key={p.id} className="flex items-center gap-2 bg-white/60 p-1.5 rounded-lg flex-row-reverse text-right">
