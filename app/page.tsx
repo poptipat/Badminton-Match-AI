@@ -124,7 +124,7 @@ export default function Home() {
     }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-100">กำลังโหลดข้อมูล...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#013C58] text-[#FFBA42] font-bold">กำลังโหลดข้อมูล...</div>;
 
   const isFull = sessionToday && playerCount >= sessionToday.max_players;
 
@@ -136,44 +136,44 @@ export default function Home() {
   });
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 font-sans p-4 relative">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#013C58] font-sans p-4 relative">
       
       {/* ลบปุ่มแอดมินมุมซ้ายบนออกไปแล้ว ตามรีเควสต์ */}
 
-      <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-md w-full">
-        <h1 className="text-3xl font-extrabold mb-2 text-gray-800">🏸 ก๊วนแบดมินตัน</h1>
-        <p className="text-gray-500 mb-8 font-medium">ระบบจัดคิวและคิดเงินอัตโนมัติ</p>
+      <div className="bg-[#00537A]/30 backdrop-blur-md p-8 rounded-3xl shadow-2xl border border-[#00537A] text-center max-w-md w-full">
+        <h1 className="text-3xl font-extrabold mb-2 text-[#FFBA42] drop-shadow-md">🏸 ก๊วนแบดมินตัน</h1>
+        <p className="text-[#A8E8F9] mb-8 font-medium">ระบบจัดคิวและคิดเงินอัตโนมัติ</p>
 
         {user ? (
           <div>
             <img 
               src={user.user_metadata.picture || user.user_metadata.picture_url || user.user_metadata.avatar_url || `https://ui-avatars.com/api/?name=${user.user_metadata.name}&background=random`} 
               alt="Profile" 
-              className="w-24 h-24 rounded-full mx-auto mb-4 border-4 border-green-500 object-cover shadow-md" 
+              className="w-24 h-24 rounded-full mx-auto mb-4 border-4 border-[#F5A201] object-cover shadow-lg" 
             />
-            <h2 className="text-2xl font-bold mb-2 text-gray-800">สวัสดี, {user.user_metadata.name}</h2>
+            <h2 className="text-2xl font-bold mb-2 text-white">สวัสดี, {user.user_metadata.name}</h2>
             
-            <div className="bg-blue-50 rounded-2xl p-5 my-6 border border-blue-100">
+            <div className="bg-[#013C58] rounded-2xl p-5 my-6 border border-[#00537A] shadow-inner">
               {sessionToday ? (
                 <>
                   <div className="flex items-center justify-center gap-2 mb-2">
                     <span className="relative flex h-3 w-3">
-                      {!isFull && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
-                      <span className={`relative inline-flex rounded-full h-3 w-3 ${isFull ? 'bg-red-500' : 'bg-green-500'}`}></span>
+                      {!isFull && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#A8E8F9] opacity-75"></span>}
+                      <span className={`relative inline-flex rounded-full h-3 w-3 ${isFull ? 'bg-red-500' : 'bg-[#A8E8F9]'}`}></span>
                     </span>
-                    <h3 className="text-blue-800 font-bold text-lg">
+                    <h3 className="text-[#FFD35B] font-bold text-lg">
                       {isFull ? "คิวเต็มแล้วสำหรับวันนี้!" : `เปิดรับสมัครเข้าตีแบดวันที่ ${todayDateFormatted}`}
                     </h3>
                   </div>
                   
-                  <p className="text-sm text-blue-600 font-medium">ค่าสนามเหมา {sessionToday.court_fee_flat} บ. | ค่าลูก {sessionToday.base_shuttle_fee} บ./เกม</p>
-                  <p className={`text-sm mt-1 mb-4 font-bold ${isFull ? 'text-red-500' : 'text-green-600'}`}>
+                  <p className="text-sm text-[#A8E8F9] font-medium">ค่าสนามเหมา {sessionToday.court_fee_flat} บ. | ค่าลูก {sessionToday.base_shuttle_fee} บ./เกม</p>
+                  <p className={`text-sm mt-1 mb-4 font-bold ${isFull ? 'text-red-400' : 'text-[#FFBA42]'}`}>
                     มีคนลงชื่อแล้ว: {playerCount} / {sessionToday.max_players} คน
                   </p>
 
                   {/* 🌟 กล่องข้อความแจ้งเตือนเรื่องกฎการยกเลิก */}
-                  <div className="bg-yellow-50 border-l-4 border-yellow-500 p-3 mt-4 mb-5 text-left rounded-r-lg shadow-sm">
-                    <p className="text-xs text-yellow-800 font-medium leading-relaxed flex items-start gap-1.5">
+                  <div className="bg-[#F5A201]/10 border-l-4 border-[#F5A201] p-3 mt-4 mb-5 text-left rounded-r-lg shadow-sm">
+                    <p className="text-xs text-[#FFD35B] font-medium leading-relaxed flex items-start gap-1.5">
                       <span className="text-sm">⚠️</span> 
                       <span>
                         <strong>กฎกติกาก๊วน:</strong> หากลงชื่อแล้วไม่สามารถมาตีได้ กรุณากดยกเลิกก่อนเวลาตีจริงอย่างน้อย 1 ชั่วโมง <u>หากไม่ยกเลิกระบบจะคิดเงินทันที</u> และจะมีผลต่อการจองคิวครั้งถัดไป (ต้องเคลียร์ยอดค้างชำระก่อนลงชื่อใหม่ทุกครั้ง)
@@ -184,9 +184,9 @@ export default function Home() {
                   {/* ถ้ายังไม่ได้ลงชื่อ ให้โชว์ Dropdown เลือกล็อกคู่ */}
                   {!isJoined && !isFull && allProfiles.length > 0 && (
                     <div className="mb-4 text-left">
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">อยากจับคู่กับใครเป็นพิเศษไหม? (ตัวเลือก)</label>
+                      <label className="block text-sm font-semibold text-[#A8E8F9] mb-1">อยากจับคู่กับใครเป็นพิเศษไหม? (ตัวเลือก)</label>
                       <select 
-                        className="w-full p-3 rounded-xl border border-blue-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-3 rounded-xl border border-[#00537A] bg-[#013C58] text-white focus:outline-none focus:ring-2 focus:ring-[#FFBA42]"
                         value={selectedPartner}
                         onChange={(e) => setSelectedPartner(e.target.value)}
                       >
@@ -205,13 +205,13 @@ export default function Home() {
                     <div className="space-y-3">
                       <a 
                         href="/checkout" 
-                        className="flex items-center justify-center bg-green-500 text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-green-600 transition-all shadow-md"
+                        className="flex items-center justify-center bg-[#FFBA42] text-[#013C58] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#FFD35B] transition-all shadow-md"
                       >
                         💸 เช็คบิล / กลับบ้าน
                       </a>
                       <button 
                         onClick={handleCancelQueue} 
-                        className="bg-red-100 text-red-600 px-6 py-3 rounded-xl w-full font-bold hover:bg-red-200 transition-all shadow-sm"
+                        className="bg-red-500/20 text-red-400 px-6 py-3 rounded-xl w-full font-bold hover:bg-red-500/40 transition-all shadow-sm border border-red-500/30"
                       >
                         ยกเลิกการลงชื่อ
                       </button>
@@ -220,10 +220,10 @@ export default function Home() {
                     <button 
                       onClick={handleJoinQueue} 
                       disabled={isFull}
-                      className={`px-6 py-4 rounded-xl w-full font-bold text-lg transition-all shadow-md active:scale-95
+                      className={`px-6 py-4 rounded-xl w-full font-bold text-lg transition-all shadow-[0_4px_15px_rgba(245,162,1,0.3)] active:scale-95
                         ${isFull 
-                          ? "bg-gray-400 text-white cursor-not-allowed" 
-                          : "bg-blue-600 text-white hover:bg-blue-700 hover:scale-[1.02]"
+                          ? "bg-gray-600 text-gray-400 cursor-not-allowed" 
+                          : "bg-[#F5A201] text-[#013C58] hover:bg-[#FFBA42] hover:scale-[1.02]"
                         }`}
                     >
                       {isFull ? "คิวเต็มแล้ว 😭" : "ลงชื่อเข้าตีแบด"}
@@ -231,25 +231,25 @@ export default function Home() {
                   )}
 
                   {/* 🌟 ปุ่มดูกระดานคิว ปรับให้เด่นชัดน่ากดมากขึ้น */}
-                  <div className="mt-5 border-t border-blue-100 pt-5">
-                    <a href="/queue" className="flex items-center justify-center bg-indigo-600 text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-indigo-700 hover:scale-[1.02] transition-all shadow-md active:scale-95">
+                  <div className="mt-5 border-t border-[#00537A] pt-5">
+                    <a href="/queue" className="flex items-center justify-center bg-[#00537A] border border-[#A8E8F9]/30 text-[#FFD35B] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#013C58] hover:scale-[1.02] transition-all shadow-md active:scale-95">
                       📋 ดูกระดานจัดคิว 👉
                     </a>
                   </div>
                 </>
               ) : (
                 <div className="py-4">
-                  <p className="text-gray-500 font-medium">วันนี้แอดมินยังไม่เปิดก๊วนครับ 😴</p>
+                  <p className="text-[#A8E8F9] font-medium">วันนี้แอดมินยังไม่เปิดก๊วนครับ 😴</p>
                 </div>
               )}
             </div>
 
-            <button onClick={handleLogout} className="text-red-500 font-medium text-sm hover:underline mt-2">
+            <button onClick={handleLogout} className="text-red-400 font-medium text-sm hover:text-red-300 transition mt-2">
               ออกจากระบบ
             </button>
           </div>
         ) : (
-          <button onClick={handleLogin} className="bg-[#00B900] text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-green-600 hover:scale-[1.02] transition-all shadow-md flex items-center justify-center gap-2 active:scale-95">
+          <button onClick={handleLogin} className="bg-[#00B900] text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#009900] hover:scale-[1.02] transition-all shadow-[0_4px_15px_rgba(0,185,0,0.3)] flex items-center justify-center gap-2 active:scale-95">
             เข้าสู่ระบบด้วย LINE
           </button>
         )}
