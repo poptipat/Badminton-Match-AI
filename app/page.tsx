@@ -139,7 +139,7 @@ export default function Home() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-sans p-4 relative">
       <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 text-center max-w-md w-full">
         <h1 className="text-3xl font-extrabold mb-2 text-[#013C58]">🏸 ก๊วนแบดมินตัน</h1>
-        <p className="text-slate-500 mb-8 font-medium">ระบบจัดคิวและคิดเงินอัตโนมัติ</p>
+        <p className="text-slate-500 mb-8 font-medium">@ On Court Badminton</p>
 
         {user ? (
           <div>
@@ -148,7 +148,7 @@ export default function Home() {
               alt="Profile" 
               className="w-24 h-24 rounded-full mx-auto mb-4 border-4 border-[#FFBA42] object-cover shadow-sm" 
             />
-            <h2 className="text-2xl font-bold mb-2 text-[#013C58]">สวัสดี, {user.user_metadata.name}</h2>
+            <h2 className="text-2xl font-bold mb-2 text-[#013C58]">{user.user_metadata.name}</h2>
             
             <div className="bg-slate-50 rounded-2xl p-5 my-6 border border-slate-200">
               {sessionToday ? (
@@ -159,7 +159,7 @@ export default function Home() {
                       <span className={`relative inline-flex rounded-full h-3 w-3 ${isFull ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
                     </span>
                     <h3 className="text-[#00537A] font-bold text-lg">
-                      {isFull ? "คิวเต็มแล้วสำหรับวันนี้!" : `เปิดรับสมัครเข้าตีแบดวันที่ ${todayDateFormatted}`}
+                      {isFull ? "คิวเต็มแล้วสำหรับวันนี้!" : `ตีแบดวันที่ ${todayDateFormatted}`}
                     </h3>
                   </div>
                   
@@ -229,8 +229,8 @@ export default function Home() {
 
                   {/* 🌟 ปุ่มดูกระดานคิว ใช้สีส้มแบรนด์ตัดให้เด่น */}
                   <div className="mt-5 border-t border-slate-200 pt-5">
-                    <a href="/queue" className="flex items-center justify-center bg-[#F5A201] text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#FFBA42] transition-all shadow-sm active:scale-95">
-                      📋 ดูกระดานจัดคิว 👉
+                    <a href="/queue" className="flex items-center justify-center bg-[#013458] text-[#A8E8F9] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#FFBA42] transition-all shadow-sm active:scale-95">
+                      📋 กระดานจัดคิว
                     </a>
                   </div>
                 </>
