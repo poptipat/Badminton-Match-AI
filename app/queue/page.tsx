@@ -76,19 +76,26 @@ export default function QueueBoard() {
           <h1 className="text-3xl font-bold text-gray-800">📋 กระดานจัดคิว</h1>
           
           <div className="flex flex-wrap gap-2 w-full lg:w-auto">
-            <Link href="/setup-profile" className="bg-green-600 text-white px-3 py-2 md:px-4 rounded-lg shadow-sm hover:bg-green-500 transition font-bold text-sm md:text-base flex-1 text-center whitespace-nowrap">
-              + ลงทะเบียนใหม่
+            
+            {/* 🌟 ปุ่มแอดมิน (เดี๋ยวสเตปต่อไปเราจะเขียนระบบดักไว้ ให้เห็นเฉพาะคนที่ได้รับอนุญาต) */}
+            <Link href="/admin" className="bg-purple-600 text-white px-3 py-2 md:px-4 rounded-lg shadow-sm hover:bg-purple-500 transition font-bold text-sm md:text-base flex-1 text-center whitespace-nowrap">
+              👑 ระบบแอดมิน
             </Link>
+
+            <Link href="/leaderboard" className="bg-yellow-500 text-white px-3 py-2 md:px-4 rounded-lg shadow-sm hover:bg-yellow-400 transition font-bold text-sm md:text-base flex-1 text-center whitespace-nowrap">
+              🏆 ตารางคะแนน
+            </Link>
+
             <Link href="/profile" className="bg-blue-600 text-white px-3 py-2 md:px-4 rounded-lg shadow-sm hover:bg-blue-500 transition font-bold text-sm md:text-base flex-1 text-center whitespace-nowrap">
               👤 โปรไฟล์ของฉัน
             </Link>
-            <Link href="/leaderboard" className="bg-yellow-500 text-white px-3 py-2 md:px-4 rounded-lg shadow-sm hover:bg-yellow-400 transition font-bold text-sm md:text-base flex-1 text-center whitespace-nowrap">
-              🏆 ทำเนียบ
-            </Link>
+
             <Link href="/" className="bg-white text-gray-600 px-3 py-2 md:px-4 rounded-lg shadow-sm border hover:bg-gray-50 transition font-bold text-sm md:text-base flex-1 text-center whitespace-nowrap">
               🏠 กลับหน้าหลัก
             </Link>
+
           </div>
+            
         </div>
 
         {/* 🌟 ตาราง 3 คอลัมน์: รอคิว -> เตรียมตัว -> ลงสนาม */}
