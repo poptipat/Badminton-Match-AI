@@ -14,6 +14,9 @@ export default function Home() {
   const [myRecord, setMyRecord] = useState<any>(null); 
   const [isAdmin, setIsAdmin] = useState(false); 
 
+  // 🌟 State ใหม่: สำหรับเก็บข้อมูลหนี้ที่ค้างข้ามวัน
+  const [outstandingDebt, setOutstandingDebt] = useState<any>(null);
+
   useEffect(() => {
     checkUserAndSession();
   }, []);
@@ -26,6 +29,25 @@ export default function Home() {
       const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user.id).single();
       if (profile?.is_admin) setIsAdmin(true);
       
+      // 🌟 1. ระบบเช็กหนี้ค้างชำระจากก๊วนรอบก่อนๆ (ที่ยอด > 0 และยังไม่จ่าย)
+      const { data: debts } = await supabase
+        .from("session_participants")
+        .select(`*, daily_sessions!inner(id, is_active)`)
+        .eq("profile_id", user.id)
+        .eq("daily_sessions.is_active", false) // ค้นหาเฉพาะก๊วนที่ปิดไปแล้ว (วันก่อนๆ)
+        .in("payment_status", ["unpaid", "pending"]);
+
+      if (debts && debts.length > 0) {
+        // กรองหาบิลที่ยอดรวม > 0 บาท (ค่าสนาม + ค่าลูก)
+        const realDebt = debts.find(d => (d.total_amount_due + (d.accumulated_shuttle_fee || 0)) > 0);
+        if (realDebt) {
+          setOutstandingDebt(realDebt);
+          setLoading(false);
+          return; // 🛑 หยุดการทำงานตรงนี้เลย ถ้ามีหนี้ จะไม่โหลดก๊วนวันนี้ให้เห็น
+        }
+      }
+
+      // 🌟 2. ถ้าไม่ติดหนี้ ถึงจะดึงข้อมูลก๊วนของวันนี้มาแสดงตามปกติ
       const { data: session } = await supabase
         .from("daily_sessions")
         .select("*")
@@ -76,6 +98,7 @@ export default function Home() {
     setSessionToday(null);
     setIsAdmin(false);
     setMyRecord(null);
+    setOutstandingDebt(null); // เคลียร์สถานะหนี้ตอนล็อกเอาท์
   };
 
   const handleJoinQueue = async () => {
@@ -113,12 +136,11 @@ export default function Home() {
     }
   };
 
-  // 🌟 ลอจิกยกเลิกคิว (เช็คเวลา 1 ชั่วโมง และเช็คว่าตีไปหรือยัง)
+  // 🌟 ลอจิกยกเลิกคิว (เช็คเวลา 1 ชั่วโมง และเช็คว่าตีไปหรือยัง) - คงเดิมของคุณไว้ 100%
   const handleCancelQueue = async () => {
     if (!sessionToday || !myRecord) return;
 
     const now = new Date();
-    // ดึงเวลาเริ่มจากฐานข้อมูล (ถ้าแอดมินยังไม่ได้กรอก ให้ถือว่าลบได้ฟรีไปก่อน)
     const sessionStart = sessionToday.start_time ? new Date(sessionToday.start_time) : null;
     let diffHours = 999; 
 
@@ -138,7 +160,7 @@ export default function Home() {
     } else {
       // 📌 กรณีที่ยังไม่ได้ตีเลย
       if (diffHours >= 1 || !sessionStart) {
-        // ยกเลิกก่อนเวลา 1 ชม. -> ใจดี ลบทิ้งให้ฟรีๆ ไม่คิดเงิน
+        // ยกเลิกก่อนเวลา 1 ชม. -> ใจดี ลบทิ้งให้ฟรีๆ ไม่คิดเงิน (ไม่มีข้อมูล = ไม่มีหนี้ค้าง)
         if (!confirm("คุณยกเลิกก่อนเวลาเริ่มตี 1 ชั่วโมง ระบบจะยกเลิกคิวให้ฟรี (ไม่เสียค่าสนาม) ยืนยันหรือไม่?")) return;
         
         await supabase.from("session_participants").delete().eq("id", myRecord.id);
@@ -146,7 +168,7 @@ export default function Home() {
         setMyRecord(null);
 
       } else {
-        // ยกเลิกกระชั้นชิด < 1 ชม. -> โดนหักค่าสนามนะจ๊ะ!
+        // ยกเลิกกระชั้นชิด < 1 ชม. -> โดนหักค่าสนาม (จะถูกเซฟเป็นหนี้ไปโผล่วันพรุ่งนี้ถ้าไม่จ่าย)
         if (!confirm("⚠️ คุณยกเลิกกระชั้นชิด (น้อยกว่า 1 ชม. ก่อนเริ่ม) ระบบจะยังคงคิดค่าสนามเหมาจ่ายตามกติกาก๊วน ยืนยันหรือไม่?")) return;
         
         await supabase.from("session_participants").update({ queue_status: 'resting', preferred_partner_id: null }).eq("id", myRecord.id);
@@ -159,10 +181,38 @@ export default function Home() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold">กำลังโหลดข้อมูล...</div>;
 
+  // 🔴 โหมดหน้าจอคนติดหนี้ (บล็อกการจองคิวใหม่) 🔴
+  if (outstandingDebt) {
+    const debtAmount = outstandingDebt.total_amount_due + (outstandingDebt.accumulated_shuttle_fee || 0);
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-sans p-4 relative">
+        <div className="bg-white p-8 rounded-3xl shadow-xl border border-rose-200 text-center max-w-md w-full relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-3 bg-rose-500"></div>
+          <span className="text-6xl block mb-4">🚨</span>
+          <h1 className="text-2xl font-black mb-2 text-rose-600">มียอดค้างชำระ</h1>
+          <p className="text-slate-600 font-medium mb-6">คุณไม่สามารถลงชื่อก๊วนรอบใหม่ได้<br/>จนกว่าจะชำระยอดที่ค้างอยู่ของรอบก่อนครับ</p>
+          
+          <div className="bg-rose-50 rounded-2xl p-4 border border-rose-100 mb-6">
+            <p className="text-sm text-rose-500 font-bold mb-1">ยอดค้างชำระรวม</p>
+            <p className="text-4xl font-black text-rose-600">{debtAmount} ฿</p>
+            {outstandingDebt.payment_status === 'pending' && (
+              <p className="text-xs text-orange-500 font-bold mt-2 bg-orange-100 py-1 rounded-md">⏳ ส่งสลิปแล้ว แอดมินกำลังตรวจสอบ</p>
+            )}
+          </div>
+
+          <a href="/checkout" className="flex items-center justify-center bg-rose-500 text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-rose-600 transition shadow-md active:scale-95 mb-4">
+            💳 ไปหน้าชำระเงิน
+          </a>
+          <button onClick={handleLogout} className="text-slate-400 font-medium text-sm hover:text-slate-600 transition">ออกจากระบบ</button>
+        </div>
+      </div>
+    );
+  }
+
+  // 🟢 โหมดปกติ (ไม่ติดหนี้) 🟢
   const isFull = sessionToday && playerCount >= sessionToday.max_players;
   const todayDateFormatted = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  // แปลงเวลาให้ดูง่ายๆ แบบ 18:00 น.
   const formatTime = (isoString: string) => {
     if (!isoString) return "";
     return new Date(isoString).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
@@ -181,7 +231,7 @@ export default function Home() {
             <img 
               src={user.user_metadata.picture || user.user_metadata.picture_url || user.user_metadata.avatar_url || `https://ui-avatars.com/api/?name=${user.user_metadata.name}&background=random`} 
               alt="Profile" 
-              className="w-24 h-24 rounded-full mx-auto mb-4 border-4 border-[#00537A] object-cover shadow-sm" 
+              className="w-24 h-24 rounded-full mx-auto mb-4 border-4 border-[#A8E8F9] object-cover shadow-sm" 
             />
             <h2 className="text-2xl font-bold mb-2 text-[#013C58]">{user.user_metadata.name}</h2>
             
@@ -198,7 +248,6 @@ export default function Home() {
                     </h3>
                   </div>
                   
-                  {/* 🌟 แสดงเวลาเปิด-ปิด ตรงนี้ครับ */}
                   {sessionToday.start_time && sessionToday.end_time && (
                     <div className="bg-white border border-[#A8E8F9] rounded-xl py-2 px-4 mb-4 inline-block shadow-sm">
                       <p className="text-[#013C58] font-bold text-sm">
@@ -212,7 +261,6 @@ export default function Home() {
                     กำลังรอตี/อยู่ในคอร์ต: {playerCount} / {sessionToday.max_players} คน
                   </p>
 
-                  {/* คำเตือนเรื่อง 1 ชั่วโมง */}
                   <div className="bg-[#FFFBF0] border-l-4 border-[#F5A201] p-3 mt-4 mb-5 text-left rounded-r-lg shadow-sm">
                     <p className="text-xs text-[#013C58] font-medium leading-relaxed flex items-start gap-1.5">
                       <span className="text-sm">⚠️</span> 

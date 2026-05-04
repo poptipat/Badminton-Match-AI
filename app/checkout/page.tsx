@@ -9,7 +9,6 @@ export default function CheckoutPage() {
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
 
-  // ⚠️ เปลี่ยนเป็นเบอร์พร้อมเพย์ของคุณได้เลยครับ!
   const PROMPTPAY_NUMBER = "0812345678"; 
 
   useEffect(() => {
@@ -19,18 +18,30 @@ export default function CheckoutPage() {
   const fetchCheckoutData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const { data: session } = await supabase.from("daily_sessions").select("id, court_fee_flat").eq("is_active", true).single();
+      // 🌟 หาบิลที่ยังไม่จ่ายก่อน (ดึงข้ามวันได้)
+      const { data: unpaidBill } = await supabase
+        .from("session_participants")
+        .select("*, profiles!profile_id(display_name)")
+        .eq("profile_id", user.id)
+        .in("payment_status", ["unpaid", "pending"])
+        .order('id', { ascending: false }) // เอาบิลล่าสุด
+        .limit(1)
+        .single();
 
-      if (session) {
-        const { data: partData, error } = await supabase
-          .from("session_participants")
-          .select("*, profiles!profile_id(display_name)")
-          .eq("session_id", session.id)
-          .eq("profile_id", user.id)
-          .single();
-
-        if (error) console.error("เกิดข้อผิดพลาด:", error);
-        setParticipant(partData);
+      if (unpaidBill) {
+        setParticipant(unpaidBill);
+      } else {
+        // ถ้าไม่มีบิลค้าง ให้ดึงของก๊วนวันนี้มาโชว์ (ถ้ามี)
+        const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).single();
+        if (session) {
+          const { data: partData } = await supabase
+            .from("session_participants")
+            .select("*, profiles!profile_id(display_name)")
+            .eq("session_id", session.id)
+            .eq("profile_id", user.id)
+            .single();
+          setParticipant(partData || null);
+        }
       }
     }
     setLoading(false);
@@ -64,24 +75,24 @@ export default function CheckoutPage() {
       })
       .eq("id", participant.id);
 
-    alert("✅ ส่งสลิปเรียบร้อย! ขอบคุณที่มาร่วมสนุกกันครับ");
+    alert("✅ ส่งสลิปเรียบร้อย! รอแอดมินตรวจสอบครับ");
     fetchCheckoutData();
     setUploading(false);
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold text-lg">กำลังโหลดบิลของคุณ...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold text-lg">กำลังดึงข้อมูลบิล...</div>;
 
   if (!participant) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
-      <p className="text-slate-500 mb-4 font-medium text-lg">คุณยังไม่ได้ลงชื่อในก๊วนวันนี้ครับ</p>
+      <p className="text-slate-500 mb-4 font-medium text-lg">คุณไม่มีบิลที่ต้องชำระครับ</p>
       <Link href="/" className="text-[#013C58] hover:text-[#F5A201] underline font-bold transition">กลับหน้าหลัก</Link>
     </div>
   );
 
-  // 🌟 ลอจิกการคำนวณเงิน
   const gamesCount = participant.games_played_today || 0;
   const totalShuttleFee = gamesCount * 27; 
-  const courtFee = 50; 
+  // ค่าสนามดึงจากสิ่งที่บันทึกไว้ในบิลนั้นๆ
+  const courtFee = participant.total_amount_due || 0; 
   const grandTotal = totalShuttleFee + courtFee; 
 
   const qrCodeUrl = `https://promptpay.io/${PROMPTPAY_NUMBER}/${grandTotal}`;
@@ -90,9 +101,8 @@ export default function CheckoutPage() {
     <div className="min-h-screen bg-slate-50 p-6 font-sans flex items-center justify-center">
       <div className="bg-white max-w-md w-full rounded-3xl shadow-xl overflow-hidden border border-slate-200">
         
-        {/* หัวบิล (โทน CI น้ำเงิน/เหลือง) */}
         <div className="bg-[#013C58] p-6 text-center text-white">
-          <h1 className="text-2xl font-black mb-1 text-[#FFBA42] drop-shadow-sm">💸 สรุปค่าใช้จ่าย</h1>
+          <h1 className="text-2xl font-black mb-1 text-[#FFBA42] drop-shadow-sm">💸 บิลค่าใช้จ่าย</h1>
           <p className="text-[#A8E8F9] font-medium">คุณ {participant.profiles?.display_name}</p>
         </div>
 
@@ -113,12 +123,11 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          {/* สถานะการชำระเงิน */}
           {participant.payment_status === 'pending' ? (
             <div className="text-center p-6 bg-[#FFFBF0] rounded-2xl border border-[#F5A201]/30">
               <span className="text-4xl block mb-2">⏳</span>
               <h2 className="text-[#F5A201] font-bold text-lg">ส่งสลิปแล้ว รอตรวจสอบ</h2>
-              <p className="text-slate-500 text-sm mt-1">กลับบ้านพักผ่อนได้เลยครับ!</p>
+              <p className="text-slate-500 text-sm mt-1">ขอบคุณครับ!</p>
               <Link href="/" className="mt-5 inline-block bg-white border border-slate-200 px-6 py-2 rounded-xl text-slate-600 hover:text-[#013C58] font-semibold transition shadow-sm">กลับหน้าหลัก</Link>
             </div>
           ) : participant.payment_status === 'paid' ? (
@@ -128,7 +137,6 @@ export default function CheckoutPage() {
               <Link href="/" className="mt-5 inline-block bg-white border border-slate-200 px-6 py-2 rounded-xl text-slate-600 hover:text-[#013C58] font-semibold transition shadow-sm">กลับหน้าหลัก</Link>
             </div>
           ) : (
-            // โซนจ่ายเงิน (สแกน QR + อัปสลิป)
             <div className="text-center">
               <p className="text-sm font-bold text-slate-500 mb-3 bg-slate-100 py-1.5 rounded-lg inline-block px-4">สแกน QR Code โอนตรงยอดเป๊ะ!</p>
               <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 inline-block mb-6">
@@ -152,10 +160,6 @@ export default function CheckoutPage() {
               >
                 {uploading ? 'กำลังอัปโหลดรูป...' : 'ยืนยันการชำระเงิน'}
               </button>
-              
-              <Link href="/" className="block mt-4 text-slate-400 font-medium text-sm hover:text-slate-600 transition">
-                ยังไม่จ่าย ขอกลับไปดูกระดานก่อน
-              </Link>
             </div>
           )}
         </div>
