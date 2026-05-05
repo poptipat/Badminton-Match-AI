@@ -142,7 +142,7 @@ export default function LeaderboardPage() {
               <RenderTier title="S (Standard) : 1200 - 1399" data={tierS} colorClass="text-[#F5A201]" borderClass="border-[#F5A201]" />
             </div>
             <div>
-              <h1 className="text-sm font-black text-[#FFBA42] mb-4 bg-[#FFBA42]/10 border border-[#FFBA42]/20 py-2.5 rounded-2xl text-center uppercase tracking-widest">🌱 Lower Bracket</h1>
+              <h1 className="text-sm font-black text-[#F5A201] mb-4 bg-[#FFBA42]/50 border border-[#FFBA42]/60 py-2.5 rounded-2xl text-center uppercase tracking-widest">🌱 Lower Bracket</h1>
               <RenderTier title="N (Novice) : 1000 - 1199" data={tierN} colorClass="text-[#FFBA42]" borderClass="border-[#FFBA42]" />
               <RenderTier title="BG (Beginner) : ต่ำกว่า 1000" data={tierBG} colorClass="text-[#A8E8F9]" borderClass="border-[#A8E8F9]" />
             </div>
