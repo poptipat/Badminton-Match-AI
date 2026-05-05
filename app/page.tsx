@@ -67,7 +67,7 @@ export default function Home() {
       
       if (session) {
         setSessionToday(session);
-        checkQueueTime(session.start_time); // ตรวจสอบเวลาเปิดคิวทันทีที่เจอก๊วน
+        checkQueueTime(session.start_time); 
 
         const { count } = await supabase
           .from("session_participants")
@@ -76,17 +76,29 @@ export default function Home() {
         
         setPlayerCount(count || 0);
 
-        // 🌟 แก้ไข: ดึงเฉพาะคนที่มีชื่ออยู่ในก๊วนของวันนี้แล้ว (และไม่ใช่ตัวเราเอง) เพื่อมาเป็นตัวเลือกจับคู่
+        // 🌟 แก้ไขบั๊กรายชื่อไม่ออกตรงนี้: ปรับไวยากรณ์การดึง Profile ใหม่ให้แม่นยำขึ้น
         const { data: todayParticipants } = await supabase
           .from("session_participants")
-          .select("profiles!inner(id, display_name)")
+          .select(`
+            profile_id,
+            profiles (
+              id,
+              display_name
+            )
+          `)
           .eq("session_id", session.id)
           .neq("profile_id", user.id);
         
-        // แปลงรูปแบบข้อมูลให้ใช้ง่ายขึ้น
         if (todayParticipants) {
-          const formattedProfiles = todayParticipants.map((p: any) => p.profiles);
-          setAllProfiles(formattedProfiles);
+          // ดึงข้อมูลชื่อออกมา และกรองค่าว่างทิ้ง
+          const formattedProfiles = todayParticipants.map((p: any) => {
+            if (Array.isArray(p.profiles)) return p.profiles[0];
+            return p.profiles;
+          }).filter(Boolean);
+          
+          // กรองข้อมูลซ้ำ (เผื่อมีคนกดยกเลิกแล้วลงใหม่)
+          const uniqueProfiles = Array.from(new Map(formattedProfiles.map((item: any) => [item.id, item])).values());
+          setAllProfiles(uniqueProfiles);
         } else {
           setAllProfiles([]);
         }
