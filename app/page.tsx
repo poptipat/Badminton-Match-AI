@@ -26,9 +26,19 @@ export default function Home() {
     setUser(user);
 
     if (user) {
-      const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user.id).single();
-      if (profile?.is_admin) setIsAdmin(true);
+      // ดึงข้อมูลโปรไฟล์
+      const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
       
+      // 🌟 เพิ่มเงื่อนไขนี้: ถ้าหาโปรไฟล์ไม่เจอ (เป็นคนใหม่) ให้เด้งไปหน้าตั้งค่าอัตโนมัติ!
+      if (!profile) {
+        window.location.href = "/setup-profile";
+        return; // หยุดการทำงานส่วนอื่น
+      }
+
+      // ถ้ามีโปรไฟล์แล้ว เช็กว่าเป็นแอดมินไหม
+      if (profile?.is_admin) setIsAdmin(true);
+     
+        
       // 🌟 1. ระบบเช็กหนี้ค้างชำระจากก๊วนรอบก่อนๆ (ที่ยอด > 0 และยังไม่จ่าย)
       const { data: debts } = await supabase
         .from("session_participants")
