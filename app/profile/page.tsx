@@ -3,14 +3,19 @@ import { supabase } from "@/utils/supabase";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-// 🌟 ตัวเลือกรูป Avatar น่ารักๆ 6 แบบ (อ้างอิงจากเว็บเก็บรูปฟรีหรือ API)
+// 🌟 เปลี่ยนเส้นทาง URL ให้ชี้ไปที่โฟลเดอร์ /avatars/ ในโปรเจกต์ของเรา
 const AVATAR_OPTIONS = [
-  { id: 'chick', name: 'น้องเจี๊ยบ (มือใหม่)', url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=chick&backgroundColor=F5A201' },
-  { id: 'gorilla', name: 'กอริลล่า (สายทุบ)', url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=gorilla&backgroundColor=ef4444' },
-  { id: 'fox', name: 'จิ้งจอก (สายหลอก)', url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=fox&backgroundColor=f97316' },
-  { id: 'sloth', name: 'สล็อธ (สายชิล)', url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=sloth&backgroundColor=8b5cf6' },
-  { id: 'unicorn', name: 'ยูนิคอร์น (สายแฟ)', url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=unicorn&backgroundColor=ec4899' },
-  { id: 'ninja', name: 'นินจา (สายสปีด)', url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=ninja&backgroundColor=3b82f6' },
+  { id: 'av1', name: 'สไตล์ 1', url: '/avatars/avatar-1.png' },
+  { id: 'av2', name: 'สไตล์ 2', url: '/avatars/avatar-2.png' },
+  { id: 'av3', name: 'สไตล์ 3', url: '/avatars/avatar-3.png' },
+  { id: 'av4', name: 'สไตล์ 4', url: '/avatars/avatar-4.png' },
+  { id: 'av5', name: 'สไตล์ 5', url: '/avatars/avatar-5.png' },
+  { id: 'av6', name: 'สไตล์ 6', url: '/avatars/avatar-6.png' },
+  { id: 'av7', name: 'สไตล์ 7', url: '/avatars/avatar-7.png' },
+  { id: 'av8', name: 'สไตล์ 8', url: '/avatars/avatar-8.png' },
+  { id: 'av9', name: 'สไตล์ 9', url: '/avatars/avatar-9.png' },
+  { id: 'av10', name: 'สไตล์ 10', url: '/avatars/avatar-10.png' },
+  { id: 'av11', name: 'สไตล์ 11', url: '/avatars/avatar-11.png' },
 ];
 
 export default function ProfilePage() {
