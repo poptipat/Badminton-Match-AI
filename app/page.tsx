@@ -14,12 +14,20 @@ export default function Home() {
   const [myRecord, setMyRecord] = useState<any>(null); 
   const [isAdmin, setIsAdmin] = useState(false); 
 
-  // 🌟 State สำหรับเก็บข้อมูลหนี้ที่ค้างข้ามวัน
   const [outstandingDebt, setOutstandingDebt] = useState<any>(null);
+  
+  // 🌟 State ใหม่: สำหรับเก็บเวลาและเช็คว่าอนุญาตให้ลงคิวได้หรือยัง
+  const [canJoinQueue, setCanJoinQueue] = useState(false);
+  const [timeUntilQueueMsg, setTimeUntilQueueMsg] = useState("");
 
   useEffect(() => {
     checkUserAndSession();
-  }, []);
+    // ตั้ง Timer เช็คเวลาทุกๆ 1 นาที เผื่อเวลาเดินถึงจุดที่กดคิวได้แล้ว
+    const timer = setInterval(() => {
+      if (sessionToday) checkQueueTime(sessionToday.start_time);
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [sessionToday]); // ผูก useEffect ตัวนี้กับ sessionToday
 
   const checkUserAndSession = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -35,7 +43,6 @@ export default function Home() {
 
       if (profile?.is_admin) setIsAdmin(true);
      
-      // 🌟 1. ระบบเช็กหนี้ค้างชำระจากก๊วนรอบก่อนๆ
       const { data: debts } = await supabase
         .from("session_participants")
         .select(`*, daily_sessions!inner(id, is_active)`)
@@ -52,7 +59,6 @@ export default function Home() {
         }
       }
 
-      // 🌟 2. ดึงข้อมูลก๊วนของวันนี้มาแสดง
       const { data: session } = await supabase
         .from("daily_sessions")
         .select("*")
@@ -61,8 +67,8 @@ export default function Home() {
       
       if (session) {
         setSessionToday(session);
+        checkQueueTime(session.start_time); // ตรวจสอบเวลาเปิดคิวทันทีที่เจอก๊วน
 
-        // 🌟 แก้ไข: นับจำนวนคนที่ "จองโควต้า" ทั้งหมดในวันนี้ (ไม่สนสถานะคิว) เพื่อเช็กโควต้า max_players
         const { count } = await supabase
           .from("session_participants")
           .select("*", { count: 'exact', head: true })
@@ -70,12 +76,20 @@ export default function Home() {
         
         setPlayerCount(count || 0);
 
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, display_name")
-          .neq("id", user.id);
+        // 🌟 แก้ไข: ดึงเฉพาะคนที่มีชื่ออยู่ในก๊วนของวันนี้แล้ว (และไม่ใช่ตัวเราเอง) เพื่อมาเป็นตัวเลือกจับคู่
+        const { data: todayParticipants } = await supabase
+          .from("session_participants")
+          .select("profiles!inner(id, display_name)")
+          .eq("session_id", session.id)
+          .neq("profile_id", user.id);
         
-        setAllProfiles(profiles || []);
+        // แปลงรูปแบบข้อมูลให้ใช้ง่ายขึ้น
+        if (todayParticipants) {
+          const formattedProfiles = todayParticipants.map((p: any) => p.profiles);
+          setAllProfiles(formattedProfiles);
+        } else {
+          setAllProfiles([]);
+        }
 
         const { data: myData } = await supabase
           .from("session_participants")
@@ -88,6 +102,39 @@ export default function Home() {
       }
     }
     setLoading(false);
+  };
+
+  // 🌟 ลอจิกตรวจสอบเวลาเปิดคิว (อนุญาตก่อนเวลา 15 นาที)
+  const checkQueueTime = (startTimeIso: string | null) => {
+    if (!startTimeIso) {
+      setCanJoinQueue(true); // ถ้าไม่ได้ตั้งเวลาไว้ ให้กดได้เลย
+      setTimeUntilQueueMsg("");
+      return;
+    }
+
+    const now = new Date();
+    const startTime = new Date(startTimeIso);
+    // ลบไป 15 นาทีจากเวลาเริ่มตีจริง
+    const queueOpenTime = new Date(startTime.getTime() - 15 * 60000); 
+
+    if (now >= queueOpenTime) {
+      setCanJoinQueue(true);
+      setTimeUntilQueueMsg("");
+    } else {
+      setCanJoinQueue(false);
+      
+      // คำนวณเวลาที่เหลือเพื่อเอาไปโชว์ในปุ่ม
+      const diffMs = queueOpenTime.getTime() - now.getTime();
+      const diffMins = Math.ceil(diffMs / 60000);
+      
+      if (diffMins > 60) {
+        const hours = Math.floor(diffMins / 60);
+        const mins = diffMins % 60;
+        setTimeUntilQueueMsg(`เปิดรับคิวในอีก ${hours} ชม. ${mins} นาที`);
+      } else {
+        setTimeUntilQueueMsg(`เปิดรับคิวในอีก ${diffMins} นาที`);
+      }
+    }
   };
 
   const handleLogin = async () => {
@@ -106,7 +153,6 @@ export default function Home() {
     setOutstandingDebt(null); 
   };
 
-  // 🌟 ฟังก์ชันที่ 1: จองโควต้า (แต่อยู่สถานะ resting ยังไม่เข้าคิว)
   const handleReserveSlot = async () => {
     if (!sessionToday || !user) return;
     
@@ -117,7 +163,7 @@ export default function Home() {
         profile_id: user.id,
         preferred_partner_id: null,
         payment_status: "unpaid",
-        queue_status: "resting", // <--- ให้พักรอก่อน ยังไม่เข้ากระดาน
+        queue_status: "resting", 
         total_amount_due: sessionToday.court_fee_flat 
       });
 
@@ -127,7 +173,6 @@ export default function Home() {
     }
   };
 
-  // 🌟 ฟังก์ชันที่ 2: มาถึงแล้ว พร้อมตี (เปลี่ยนสถานะเข้าคิว waiting)
   const handleReadyToPlay = async () => {
     if (!myRecord) return;
 
@@ -145,14 +190,12 @@ export default function Home() {
     }
   };
 
-  // 🌟 ฟังก์ชันที่ 3: ขอพักกินน้ำ (ออกจากคิวชั่วคราว)
   const handleRest = async () => {
     if (!myRecord) return;
     await supabase.from("session_participants").update({ queue_status: 'resting', preferred_partner_id: null }).eq("id", myRecord.id);
     checkUserAndSession();
   };
 
-  // 🌟 ฟังก์ชันที่ 4: ยกเลิกการจอง
   const handleCancelReservation = async () => {
     if (!sessionToday || !myRecord) return;
 
@@ -165,13 +208,11 @@ export default function Home() {
     }
 
     if (diffHours >= 1 || !sessionStart) {
-      // ยกเลิกทัน (ก่อน 1 ชม.) -> ลบข้อมูลทิ้ง ฟรี!
       if (!confirm("คุณกดยกเลิกก่อนเวลา 1 ชั่วโมง ระบบจะคืนโควต้าให้โดยไม่คิดค่าสนาม ยืนยันการยกเลิกหรือไม่?")) return;
       await supabase.from("session_participants").delete().eq("id", myRecord.id);
       alert("ยกเลิกการจองเรียบร้อยแล้ว หวังว่าจะมาเล่นด้วยกันรอบหน้านะครับ!");
       setMyRecord(null);
     } else {
-      // ยกเลิกไม่ทัน -> ไม่ลบข้อมูล ปล่อยเป็นหนี้
       alert("⚠️ ไม่สามารถยกเลิกฟรีได้แล้วครับ (กระชั้นชิดเกินไป)\nระบบจะบันทึกค่าสนาม 50 บาทตามกติกา แต่หากคุณเปลี่ยนใจมาที่คอร์ด คุณยังสามารถกดลงคิวเพื่อเข้าเล่นได้ตามปกติครับ");
     }
     
@@ -180,7 +221,6 @@ export default function Home() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold">กำลังโหลดข้อมูล...</div>;
 
-  // 🔴 โหมดหน้าจอคนติดหนี้
   if (outstandingDebt) {
     const debtAmount = outstandingDebt.total_amount_due + (outstandingDebt.accumulated_shuttle_fee || 0);
     return (
@@ -215,7 +255,6 @@ export default function Home() {
     );
   }
 
-  // 🟢 โหมดปกติ
   const isFull = sessionToday && playerCount >= sessionToday.max_players;
   const todayDateFormatted = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -224,11 +263,8 @@ export default function Home() {
     return new Date(isoString).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
   };
 
-  // ตรวจสอบสถานะว่า "อยู่ในคิวรอตี/ตีอยู่" หรือไม่
   const isActiveInQueue = myRecord && ['waiting', 'preparing', 'playing'].includes(myRecord.queue_status);
-  // ตรวจสอบว่าเคยจองโควต้าไว้ไหม
   const hasReserved = myRecord !== null;
-  // ตรวจสอบว่าเคยลงสนามไปแล้วหรือยัง (เพื่อไม่ให้กดยกเลิกการจองได้อีกถ้าตีไปแล้ว)
   const hasPlayed = (myRecord?.games_played_today || 0) > 0;
 
   return (
@@ -269,7 +305,6 @@ export default function Home() {
                   
                   <p className="text-sm text-slate-600 font-medium mt-1">ค่าสนามเหมา {sessionToday.court_fee_flat} บ. | ค่าลูก {sessionToday.base_shuttle_fee} บ./เกม</p>
                   
-                  {/* เปลี่ยนคำอธิบายให้เข้าใจว่านี่คือยอดการจองโควต้า */}
                   <p className={`text-sm mt-1 mb-4 font-bold ${isFull ? 'text-rose-500' : 'text-[#F5A201]'}`}>
                     ยอดการจองโควต้า: {playerCount} / {sessionToday.max_players} คน
                   </p>
@@ -283,10 +318,9 @@ export default function Home() {
                     </p>
                   </div>
 
-                  {/* 🌟 แสดงส่วนเลือกคู่เฉพาะตอนที่เตรียมจะกดเข้าคิว (อยู่หน้าคอร์ดแล้ว) */}
                   {hasReserved && !isActiveInQueue && (
                     <div className="mb-4 text-left p-4 bg-white rounded-2xl border border-emerald-100 shadow-sm">
-                      <label className="block text-sm font-semibold text-emerald-700 mb-2">ถึงคอร์ดแล้ว! อยากจับคู่กับใครไหม?</label>
+                      <label className="block text-sm font-semibold text-emerald-700 mb-2">อยากจับคู่กับใครไหม?</label>
                       <select 
                         className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
                         value={selectedPartner}
@@ -302,9 +336,7 @@ export default function Home() {
                     </div>
                   )}
                   
-                  {/* 🌟 ลอจิกการแสดงปุ่มแบบใหม่ */}
                   {!hasReserved ? (
-                    // กรณียังไม่เคยจองสิทธิ์เลย
                     <button 
                       onClick={handleReserveSlot} 
                       disabled={isFull}
@@ -317,11 +349,9 @@ export default function Home() {
                       {isFull ? "คิวเต็มแล้ว 😭" : "🎟️ จองโควต้าตีแบดวันนี้"}
                     </button>
                   ) : (
-                    // กรณีจองโควต้าแล้ว
                     <div className="space-y-3">
                       
                       {isActiveInQueue ? (
-                        // ถ้าอยู่ในคิว (รอตี / เตรียมตัว / ตีอยู่)
                         <button 
                           onClick={handleRest} 
                           className="bg-amber-50 text-amber-600 px-6 py-4 rounded-xl w-full font-bold hover:bg-amber-100 transition-all shadow-sm active:scale-95 border border-amber-200"
@@ -329,20 +359,31 @@ export default function Home() {
                           ⏸️ พักคิวชั่วคราว
                         </button>
                       ) : (
-                        // ถ้าจองแล้ว แต่ยังไม่เข้าคิว (อยู่ระหว่างเดินทาง หรือ พักอยู่)
                         <div className="space-y-3">
+                          {/* 🌟 ปุ่มสีเขียว พร้อมเงื่อนไข Time Lock */}
                           <button 
                             onClick={handleReadyToPlay} 
-                            className="bg-emerald-500 text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-emerald-600 transition-all shadow-md active:scale-95 border-b-4 border-emerald-700"
+                            disabled={!canJoinQueue}
+                            className={`w-full px-6 py-4 rounded-xl font-bold text-lg transition-all shadow-md 
+                              ${!canJoinQueue 
+                                ? "bg-slate-200 text-slate-400 cursor-not-allowed border-b-4 border-slate-300" 
+                                : "bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 border-b-4 border-emerald-700"
+                              }`}
                           >
-                            🏸 ถึงคอร์ดแล้ว! ลงคิวพร้อมตี
+                            {!canJoinQueue ? (
+                              <span className="flex flex-col items-center gap-1">
+                                <span>🔒 ยังไม่เปิดรับคิว</span>
+                                <span className="text-xs font-medium text-slate-500">({timeUntilQueueMsg})</span>
+                              </span>
+                            ) : (
+                              "🏸 ถึงคอร์ดแล้ว! ลงคิวพร้อมตี"
+                            )}
                           </button>
                           
-                          {/* ปุ่มยกเลิกโควต้า (แสดงเฉพาะคนที่ยังไม่เคยลงตีในวันนั้นเลย) */}
                           {!hasPlayed && (
                             <button 
                               onClick={handleCancelReservation} 
-                              className="text-slate-400 text-sm font-semibold underline hover:text-rose-500 transition-all mt-2"
+                              className="text-slate-400 text-sm font-semibold underline hover:text-rose-500 transition-all mt-2 w-full"
                             >
                               ยกเลิกการจองโควต้าวันนี้
                             </button>
@@ -350,7 +391,6 @@ export default function Home() {
                         </div>
                       )}
 
-                      {/* ปุ่มเช็คบิล แสดงเสมอถ้ายังไม่จ่ายเงิน */}
                       {myRecord.payment_status !== 'paid' && (
                         <a 
                           href="/checkout" 
