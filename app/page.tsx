@@ -180,8 +180,14 @@ export default function Home() {
       });
 
     if (!error) {
-      alert("✅ จองโควต้าสำเร็จ! เมื่อเดินทางมาถึงคอร์ดแล้ว อย่าลืมมากดปุ่ม 'ลงคิวรอตี' นะครับ 🏸");
-      checkUserAndSession(); 
+      // 🌟 เช็คเงื่อนไข ถ้าเป็นก๊วนจ่ายก่อน ให้เด้งไปหน้าชำระเงินเลย
+      if (sessionToday.reservation_type === 'pay_first') {
+        alert("✅ จองโควต้าสำเร็จ! ระบบจะพาไปหน้าชำระเงินเพื่อยืนยันสิทธิ์ลงคิวนะครับ");
+        window.location.href = "/checkout"; 
+      } else {
+        alert("✅ จองโควต้าสำเร็จ! เมื่อเดินทางมาถึงคอร์ดแล้ว อย่าลืมมากดปุ่ม 'ลงคิวรอตี' นะครับ 🏸");
+        checkUserAndSession(); 
+      }
     }
   };
 
@@ -385,30 +391,35 @@ export default function Home() {
                         </button>
                       ) : (
                         <div className="space-y-3">
-                          {/* 🌟 ปุ่มสีเขียว พร้อมเงื่อนไข Time Lock และ Payment Lock */}
-                          <button 
-                            onClick={handleReadyToPlay} 
-                            disabled={!canJoinQueue || (sessionToday.reservation_type === 'pay_first' && myRecord.payment_status !== 'paid')}
-                            className={`w-full px-6 py-4 rounded-xl font-bold text-lg transition-all shadow-md 
-                              ${(!canJoinQueue || (sessionToday.reservation_type === 'pay_first' && myRecord.payment_status !== 'paid'))
-                                ? "bg-slate-200 text-slate-400 cursor-not-allowed border-b-4 border-slate-300" 
-                                : "bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 border-b-4 border-emerald-700"
-                              }`}
-                          >
-                            {!canJoinQueue ? (
-                              <span className="flex flex-col items-center gap-1">
-                                <span>🔒 ยังไม่เปิดรับคิว</span>
-                                <span className="text-xs font-medium text-slate-500">({timeUntilQueueMsg})</span>
-                              </span>
-                            ) : (sessionToday.reservation_type === 'pay_first' && myRecord.payment_status !== 'paid') ? (
-                              <span className="flex flex-col items-center gap-1">
-                                <span>🔒 ต้องชำระเงินก่อนลงคิว</span>
-                                <span className="text-xs font-medium text-slate-500">(กรุณากดชำระเงินด้านล่าง)</span>
-                              </span>
-                            ) : (
-                              "🏸 ถึงคอร์ดแล้ว! ลงคิวพร้อมตี"
-                            )}
-                          </button>
+                          {/* 🌟 แยกเงื่อนไขชัดเจน: ต้องจ่ายเงินก่อน VS รอเวลาลงคิว */}
+                          {sessionToday.reservation_type === 'pay_first' && myRecord.payment_status !== 'paid' ? (
+                            <a 
+                              href="/checkout"
+                              className="flex flex-col items-center justify-center bg-rose-500 text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-rose-600 transition-all shadow-md active:scale-95 border-b-4 border-rose-700"
+                            >
+                              <span>💸 ไปหน้าชำระเงินเพื่อปลดล็อคคิว</span>
+                              <span className="text-xs font-medium text-rose-100">(ก๊วนนี้ต้องชำระค่าสนามก่อนลงคิว)</span>
+                            </a>
+                          ) : (
+                            <button 
+                              onClick={handleReadyToPlay} 
+                              disabled={!canJoinQueue}
+                              className={`w-full px-6 py-4 rounded-xl font-bold text-lg transition-all shadow-md 
+                                ${!canJoinQueue 
+                                  ? "bg-slate-200 text-slate-400 cursor-not-allowed border-b-4 border-slate-300" 
+                                  : "bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 border-b-4 border-emerald-700"
+                                }`}
+                            >
+                              {!canJoinQueue ? (
+                                <span className="flex flex-col items-center gap-1">
+                                  <span>🔒 ยังไม่เปิดรับคิว</span>
+                                  <span className="text-xs font-medium text-slate-500">({timeUntilQueueMsg})</span>
+                                </span>
+                              ) : (
+                                "🏸 ถึงคอร์ดแล้ว! ลงคิวพร้อมตี"
+                              )}
+                            </button>
+                          )}
                           
                           {!hasPlayed && (
                             <button 
