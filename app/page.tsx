@@ -315,6 +315,19 @@ export default function Home() {
                     </div>
                   )}
                   
+                  {/* 🌟 เพิ่มป้ายบอกกติกาการจ่ายเงิน */}
+                  <div className="mb-4">
+                    {sessionToday.reservation_type === 'pay_first' ? (
+                      <span className="bg-rose-100 text-rose-700 px-3 py-1 rounded-full text-xs font-bold border border-rose-200">
+                        ⚠️ ก๊วนนี้ต้องชำระเงินก่อนลงคิว
+                      </span>
+                    ) : (
+                      <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-200">
+                        ✅ ก๊วนนี้เหมาจ่ายทีหลัง (ก่อนกลับ)
+                      </span>
+                    )}
+                  </div>
+                  
                   <p className="text-sm text-slate-600 font-medium mt-1">ค่าสนามเหมา {sessionToday.court_fee_flat} บ. | ค่าลูก {sessionToday.base_shuttle_fee} บ./เกม</p>
                   
                   <p className={`text-sm mt-1 mb-4 font-bold ${isFull ? 'text-rose-500' : 'text-[#F5A201]'}`}>
@@ -372,12 +385,12 @@ export default function Home() {
                         </button>
                       ) : (
                         <div className="space-y-3">
-                          {/* 🌟 ปุ่มสีเขียว พร้อมเงื่อนไข Time Lock */}
+                          {/* 🌟 ปุ่มสีเขียว พร้อมเงื่อนไข Time Lock และ Payment Lock */}
                           <button 
                             onClick={handleReadyToPlay} 
-                            disabled={!canJoinQueue}
+                            disabled={!canJoinQueue || (sessionToday.reservation_type === 'pay_first' && myRecord.payment_status !== 'paid')}
                             className={`w-full px-6 py-4 rounded-xl font-bold text-lg transition-all shadow-md 
-                              ${!canJoinQueue 
+                              ${(!canJoinQueue || (sessionToday.reservation_type === 'pay_first' && myRecord.payment_status !== 'paid'))
                                 ? "bg-slate-200 text-slate-400 cursor-not-allowed border-b-4 border-slate-300" 
                                 : "bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 border-b-4 border-emerald-700"
                               }`}
@@ -386,6 +399,11 @@ export default function Home() {
                               <span className="flex flex-col items-center gap-1">
                                 <span>🔒 ยังไม่เปิดรับคิว</span>
                                 <span className="text-xs font-medium text-slate-500">({timeUntilQueueMsg})</span>
+                              </span>
+                            ) : (sessionToday.reservation_type === 'pay_first' && myRecord.payment_status !== 'paid') ? (
+                              <span className="flex flex-col items-center gap-1">
+                                <span>🔒 ต้องชำระเงินก่อนลงคิว</span>
+                                <span className="text-xs font-medium text-slate-500">(กรุณากดชำระเงินด้านล่าง)</span>
                               </span>
                             ) : (
                               "🏸 ถึงคอร์ดแล้ว! ลงคิวพร้อมตี"
@@ -427,8 +445,15 @@ export default function Home() {
                   </div>
                 </>
               ) : (
-                <div className="py-4">
-                  <p className="text-slate-500 font-medium">วันนี้แอดมินยังไม่เปิดก๊วนครับ 😴</p>
+                <div className="py-6 flex flex-col items-center">
+                  <p className="text-slate-500 font-medium mb-4">วันนี้แอดมินยังไม่เปิดก๊วนครับ 😴</p>
+                  
+                  {/* 🌟 ปลดล็อคแอดมินตรงนี้ */}
+                  {isAdmin && (
+                    <a href="/admin" className="flex items-center justify-center bg-[#013458] text-[#F5A201] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#00537A] transition-all shadow-sm active:scale-95 border border-[#FFBA42]/30 mt-4">
+                      👑 เข้าสู่หน้าแอดมิน (เพื่อเปิดก๊วน)
+                    </a>
+                  )}
                 </div>
               )}
             </div>
