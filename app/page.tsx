@@ -421,13 +421,21 @@ export default function Home() {
                             </button>
                           )}
                           
-                          {!hasPlayed && (
+                          {/* 🌟 เช็คเงื่อนไข: ต้องยังไม่ได้เล่น และ ต้องไม่ใช่คนที่จ่ายเงินไปแล้วในระบบจ่ายก่อน */}
+                          {!hasPlayed && !(sessionToday.reservation_type === 'pay_first' && myRecord.payment_status === 'paid') && (
                             <button 
                               onClick={handleCancelReservation} 
-                              className="text-slate-400 text-sm font-semibold underline hover:text-rose-500 transition-all mt-2 w-full"
+                              className="text-slate-400 text-sm font-semibold underline hover:text-rose-500 transition-all mt-4 w-full"
                             >
                               ยกเลิกการจองโควต้าวันนี้
                             </button>
+                          )}
+
+                          {/* 🌟 (แถมให้) ถ้าจ่ายเงินแล้ว แต่อยากยกเลิก ให้โชว์ข้อความแนะนำแทน เพื่อไม่ให้ผู้เล่นงงว่าปุ่มหายไปไหน */}
+                          {!hasPlayed && sessionToday.reservation_type === 'pay_first' && myRecord.payment_status === 'paid' && (
+                            <p className="text-slate-400 text-xs font-medium mt-4 w-full text-center">
+                              * ชำระเงินแล้ว หากต้องการยกเลิกคิว กรุณาติดต่อแอดมินครับ
+                            </p>
                           )}
                         </div>
                       )}
