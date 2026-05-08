@@ -97,14 +97,22 @@ export default function AdminPayments() {
     setLoading(false);
   };
 
-  const handleApprove = async (id: string, currentStatus: string, shuttleFee: number) => {
+  // 🌟 อัปเกรดฟังก์ชันยืนยันยอด ให้ดึงข้อมูลสดๆ จาก DB ป้องกันบั๊กข้ามสถานะ
+  const handleApprove = async (id: string, currentStatus: string, sessionId: string) => {
     const confirmApprove = confirm("คุณตรวจสอบยอดเงินในบัญชีว่าเข้าจริงแล้ว ใช่หรือไม่?");
     if (!confirmApprove) return;
 
+    // 🌟 ดึงข้อมูลก๊วนใหม่สดๆ เพื่อเช็คว่าก๊วนนี้เป็นระบบ Pay First ชัวร์ๆ
+    const { data: sessionData } = await supabase
+      .from('daily_sessions')
+      .select('reservation_type')
+      .eq('id', sessionId)
+      .single();
+    
     let nextStatus = 'paid';
     
-    // 🌟 ถ้าเป็นระบบ Pay First และแอดมินเพิ่งตรวจสลิปใบแรก (ยังไม่มีค่าลูก) ให้เป็นแค่ court_paid
-    if (currentStatus === 'pending' && latestSession?.reservation_type === 'pay_first' && shuttleFee === 0) {
+    // 🌟 ถ้าตรวจเจอว่าเป็น Pay First และเป็นสลิปใบแรก (pending) ให้ตั้งเป็น court_paid เท่านั้น!
+    if (currentStatus === 'pending' && sessionData?.reservation_type === 'pay_first') {
         nextStatus = 'court_paid';
     }
 
