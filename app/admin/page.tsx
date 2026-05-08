@@ -16,7 +16,10 @@ export default function AdminDashboard() {
   const courts = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
   const [showResultModal, setShowResultModal] = useState(false);
-  const [matchToFinish, setMatchToFinish] = useState<any[]>([]); 
+  const [matchToFinish, setMatchToFinish] = useState<any[]>([]);
+  
+  // 🌟 State สำหรับเก็บประวัติการแข่งขัน
+  const [matchHistory, setMatchHistory] = useState<any[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -31,6 +34,7 @@ export default function AdminDashboard() {
   const fetchData = async () => {
     const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).single();
     if (session) {
+      fetchMatchHistory(session.id);
       // ใช้ select('*') เพื่อดึงข้อมูลทั้งหมด รวมถึงคอลัมน์ team (ถ้าสร้างไว้แล้ว)
       const { data } = await supabase
         .from("session_participants")
@@ -65,26 +69,46 @@ export default function AdminDashboard() {
     const waitingList = participants.filter(p => p.queue_status === 'waiting');
     if (waitingList.length < 4) return alert("ต้องมีคนรอคิวอย่างน้อย 4 คนครับ!");
     
-    const pool = waitingList.slice(0, 6); 
+    // 🌟 1. ขยายสระน้ำ (Pool) ให้ลึกขึ้น จาก 6 เป็น 10 คน 
+    // เพื่อให้ AI มีตัวเลือกไปดึงคนที่คิวอยู่ลึกกว่าแต่ฝีมือพอดีกันมาผสมได้
+    const searchDepth = Math.min(waitingList.length, 10); 
+    const pool = waitingList.slice(0, searchDepth); 
     
+    // 🌟 2. The Anchor: บังคับเลยว่า "คิวที่ 1 ต้องได้ลงสนาม" 
+    // ไม่งั้นคนที่รอนานสุดจะถูก AI ข้ามไปเรื่อยๆ ถ้าฝีมือเขาไม่เข้าพวก
+    const player1 = pool[0]; 
+
     let bestMatch: any = null;
     let minDiff = Infinity;
 
-    if (pool.length === 4) {
-      bestMatch = { ...getBestPairing(pool), players: pool };
-    } else {
-      for (let j = 1; j < pool.length - 2; j++) {
-        for (let k = j + 1; k < pool.length - 1; k++) {
-          for (let l = k + 1; l < pool.length; l++) {
-            const candidates = [pool[0], pool[j], pool[k], pool[l]]; 
-            const pairing = getBestPairing(candidates);
+    // ลูปหาอีก 3 คนจาก pool ที่เหลือ (โดยมี player1 ยืนพื้นไว้เสมอ)
+    for (let j = 1; j < pool.length - 2; j++) {
+      for (let k = j + 1; k < pool.length - 1; k++) {
+        for (let l = k + 1; l < pool.length; l++) {
+          
+          const candidates = [player1, pool[j], pool[k], pool[l]]; 
+          const pairing = getBestPairing(candidates); // ฟังก์ชันเดิมของคุณ
+          
+          if (pairing) {
+            let currentDiffScore = pairing.diff;
+
+            // 🌟 3. ระบบ Anti-Repeat (ป้องกันเจอคนเดิมซ้ำ)
+            // เช็กประวัติว่า 4 คนนี้ เคยลงคอร์ดพร้อมกันใน 1-2 แมตช์ที่ผ่านมาหรือไม่?
+            const isFamiliarFaces = checkRecentHistory(candidates); 
             
-            // 🌟 เติม pairing && ตรงนี้ เพื่อกันเหนียวในกรณีที่ pairing เป็น null ครับ
-            if (pairing && pairing.diff < minDiff) {
-              minDiff = pairing.diff;
-              bestMatch = { ...pairing, players: candidates };
+            if (isFamiliarFaces) {
+               // ถ้าเป็นหน้าเดิมๆ ให้บวกคะแนน "ค่าปรับ (Penalty)" เข้าไปเยอะๆ 
+               // (ตัวเลข Diff ยิ่งน้อยยิ่งดี พอเราบวกไป 1000 AI จะมองว่านี่คือการจัดคู่ที่แย่ และข้ามไปหาคู่ย่อยอื่นแทน)
+               currentDiffScore += 1000; 
+            }
+
+            // ถ้าคะแนน(ความห่างฝีมือ + ค่าปรับหน้าซ้ำ) น้อยกว่าสถิติที่ดีที่สุด ให้จำคู่นี้ไว้
+            if (currentDiffScore < minDiff) {
+              minDiff = currentDiffScore;
+              bestMatch = { ...pairing, players: candidates, diff: currentDiffScore };
             }
           }
+
         }
       }
     }
@@ -93,6 +117,28 @@ export default function AdminDashboard() {
       setTeamA(bestMatch.teamA.map((p: any) => p.id));
       setTeamB(bestMatch.teamB.map((p: any) => p.id));
     }
+  };
+
+  // -------------------------------------------------------------
+  // 🛠️ ฟังก์ชันจำลอง: สำหรับเช็กว่า 4 คนนี้เพิ่งตีด้วยกันมาหรือไม่?
+  // -------------------------------------------------------------
+  const checkRecentHistory = (candidates: any[]) => {
+     // TODO: ในอนาคต เราจะต้องเขียนไปดึงข้อมูลจากตาราง 'matches' 
+     // ว่าในแมตช์ที่ 1-2 ล่าสุด มีชื่อของคนกลุ่มนี้ซ้อนทับกันเกิน 3 ใน 4 คนหรือไม่
+     
+     // สมมติว่าตอนนี้ return false ไปก่อน (ยังไม่มีประวัติ)
+     return false; 
+  };
+
+  // 🌟 ให้เอา fetchMatchHistory() ไปเรียกใน useEffect หรือในฟังก์ชัน fetch session
+  const fetchMatchHistory = async (sessionId: string) => {
+    const { data } = await supabase
+      .from("match_history")
+      .select("*")
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: false });
+    
+    if (data) setMatchHistory(data);
   };
 
   // 🌟 ฟังก์ชันเลือกลงทีมแบบ Manual
@@ -248,10 +294,11 @@ export default function AdminDashboard() {
       ? `⚖️ เสมอกัน!\nทีม 1 เปลี่ยน ${deltaA > 0 ? '+'+deltaA : deltaA} แต้ม\nทีม 2 เปลี่ยน ${deltaB > 0 ? '+'+deltaB : deltaB} แต้ม`
       : `🏆 ทีม ${resultType === 'teamA' ? '1 (ฟ้า)' : '2 (ส้ม)'} ชนะ!\nทีม 1 ได้ ${deltaA > 0 ? '+'+deltaA : deltaA} แต้ม\nทีม 2 ได้ ${deltaB > 0 ? '+'+deltaB : deltaB} แต้ม`;
     
-    alert(alertMsg);
-    fetchData();
-    setLoading(false);
-  };
+      alert(alertMsg);
+      fetchData(); // อัปเดตกระดาน
+      fetchMatchHistory(currentSessionId); // 🌟 เติมบรรทัดนี้ เพื่อให้อัปเดตตารางประวัติด้านล่างทันที
+      setLoading(false);
+    };
 
   const handleUndoMatch = async (match: any) => {
     if (!confirm("⚠️ ต้องการยกเลิกผลการแข่งนี้และคืนคะแนน ELO ใช่หรือไม่?\n(สถิติจำนวนเกมและค่าลูกจะถูกหักออกด้วย)")) return;
@@ -308,7 +355,8 @@ export default function AdminDashboard() {
     await supabase.from("match_history").delete().eq('id', match.id);
     
     alert("✅ ดึงคะแนนคืนเรียบร้อย!");
-    fetchData();
+    fetchData(); // อัปเดตกระดาน
+    fetchMatchHistory(match.session_id); // 🌟 เติมบรรทัดนี้ เพื่อให้กล่องประวัติที่เพิ่งลบ หายวับไปทันที
     setLoading(false);
   };
 
@@ -566,7 +614,7 @@ export default function AdminDashboard() {
                   </div>
                 )
               })}
-
+            
               {preparing.length === 0 && playing.length === 0 && (
                 <div className="col-span-1 md:col-span-2 flex items-center justify-center py-16 bg-gray-900 rounded-2xl border border-dashed border-gray-800">
                   <p className="text-gray-500 font-medium text-sm md:text-base">คอร์ดยังว่างทั้งหมด จัดคนลงได้เลยครับ!</p>
@@ -574,9 +622,75 @@ export default function AdminDashboard() {
               )}
             </div>
           </div>
-
         </div>
-      </div>
+      
+              {/* 🌟 ส่วนแสดงประวัติการแข่งขัน (Match History) */}
+        <div className="mt-8 bg-gray-900 rounded-3xl p-6 shadow-xl border border-gray-800">
+            <h2 className="text-xl font-black text-gray-100 mb-4 flex items-center gap-2">
+            <span className="text-indigo-400">📜</span> ประวัติการแข่งขัน (อัปเดตล่าสุด)
+           </h2>
+          
+        <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+            {matchHistory.length === 0 ? (
+              <p className="text-gray-500 text-center py-6 font-medium">ยังไม่มีประวัติการแข่งขันในวันนี้</p>
+            ) : (
+              matchHistory.map((match) => (
+                <div key={match.id} className="bg-gray-800/50 border border-gray-700 p-4 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4 hover:bg-gray-800 transition">
+                  
+                  {/* ข้อมูลการแข่ง */}
+                  <div className="flex-1 w-full">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold text-gray-500">
+                        {new Date(match.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
+                      </span>
+                      {match.winner === 'draw' ? (
+                        <span className="bg-gray-700 text-gray-300 text-[10px] font-bold px-2 py-0.5 rounded">เสมอ (DRAW)</span>
+                      ) : (
+                        <span className="bg-yellow-500/20 text-yellow-500 text-[10px] font-bold px-2 py-0.5 rounded">
+                          ผู้ชนะ: {match.winner === 'teamA' ? 'ทีมซ้าย' : 'ทีมขวา'}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {/* ทีม A */}
+                      <div className={`flex-1 p-2 rounded-xl border ${match.winner === 'teamA' ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-gray-900 border-gray-800'}`}>
+                        <p className="text-sm text-gray-300 font-medium truncate">
+                          {match.team_a.map((p: any) => p.display_name).join(' & ')}
+                        </p>
+                        <p className={`text-xs font-bold mt-1 ${match.delta_a >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {match.delta_a > 0 ? '+' : ''}{match.delta_a} ELO
+                        </p>
+                      </div>
+                      
+                      <span className="text-gray-600 font-black text-sm">VS</span>
+                      
+                      {/* ทีม B */}
+                      <div className={`flex-1 p-2 rounded-xl border ${match.winner === 'teamB' ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-gray-900 border-gray-800'}`}>
+                        <p className="text-sm text-gray-300 font-medium truncate">
+                          {match.team_b.map((p: any) => p.display_name).join(' & ')}
+                        </p>
+                        <p className={`text-xs font-bold mt-1 ${match.delta_b >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {match.delta_b > 0 ? '+' : ''}{match.delta_b} ELO
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ปุ่ม Cancel */}
+                  <button 
+                    onClick={() => handleUndoMatch(match)}
+                    className="bg-gray-900 border border-rose-500/30 hover:bg-rose-900/30 hover:border-rose-500 text-rose-400 text-sm font-bold py-2 px-4 rounded-xl transition-all whitespace-nowrap active:scale-95 flex items-center gap-1"
+                  >
+                    <span>❌</span> ยกเลิกผล
+                  </button>
+                  
+                </div>
+              ))
+            )}
+          </div>
+       </div>
     </div>
+  </div>  
   );
 }
