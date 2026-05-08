@@ -31,84 +31,50 @@ export default function Home() {
     const { data: { user } } = await supabase.auth.getUser();
     setUser(user);
 
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-      
-      if (!profile) {
-        window.location.href = "/setup-profile";
-        return; 
-      }
-
-      if (profile?.is_admin) setIsAdmin(true);
-     
-      // 🌟 หนี้ค้าง (รวมถึงคนที่จ่ายค่าสนามก๊วนเก่าแล้ว แต่ลืมจ่ายค่าลูกแบดด้วย!)
-      const { data: debts } = await supabase
-        .from("session_participants")
-        .select(`*, daily_sessions!inner(id, is_active)`)
-        .eq("profile_id", user.id)
-        .eq("daily_sessions.is_active", false) 
-        .in("payment_status", ["unpaid", "pending", "pending_final", "court_paid"]);
-
-      if (debts && debts.length > 0) {
-        const realDebt = debts.find(d => {
-            const shuttle = d.accumulated_shuttle_fee || 0;
-            const court = d.total_amount_due || 0;
-            // ถ้าเป็น court_paid ถือว่าเป็นหนี้ก็ต่อเมื่อมีค่าลูกค้าง
-            if (d.payment_status === 'court_paid') return shuttle > 0;
-            return (court + shuttle) > 0;
-        });
-
-        if (realDebt) {
-          setOutstandingDebt(realDebt);
-          setLoading(false);
-          return; 
-        }
-      }
-
-      const { data: session } = await supabase
-        .from("daily_sessions")
-        .select("*")
-        .eq("is_active", true)
-        .single();
-      
-      if (session) {
-        setSessionToday(session);
-        checkQueueTime(session.start_time); 
-
-        const { count } = await supabase
-          .from("session_participants")
-          .select("*", { count: 'exact', head: true })
-          .eq("session_id", session.id);
-        
-        setPlayerCount(count || 0);
-
-        const { data: todayParticipants } = await supabase
-          .from("session_participants")
-          .select(`profile_id, profiles (id, display_name)`)
-          .eq("session_id", session.id)
-          .neq("profile_id", user.id);
-        
-        if (todayParticipants) {
-          const formattedProfiles = todayParticipants.map((p: any) => {
-            if (Array.isArray(p.profiles)) return p.profiles[0];
-            return p.profiles;
-          }).filter(Boolean);
-          const uniqueProfiles = Array.from(new Map(formattedProfiles.map((item: any) => [item.id, item])).values());
-          setAllProfiles(uniqueProfiles);
-        } else {
-          setAllProfiles([]);
-        }
-
-        const { data: myData } = await supabase
-          .from("session_participants")
-          .select("*")
-          .eq("session_id", session.id)
-          .eq("profile_id", user.id)
-          .single();
-        
-        setMyRecord(myData || null);
-      }
+    if (!user) {
+      setLoading(false);
+      return;
     }
+
+    // 🔥 ยิงนัดเดียวได้นก 6 ตัว
+    const { data, error } = await supabase.rpc('get_home_dashboard_data', { 
+      p_user_id: user.id 
+    });
+
+    if (error) {
+      console.error("RPC Error:", error);
+      alert("เกิดข้อผิดพลาดในการโหลดข้อมูลจากฐานข้อมูล");
+      setLoading(false);
+      return;
+    }
+
+    // 1. ถ้าไม่มี Profile เด้งไปหน้าตั้งค่า
+    if (data.error === 'profile_not_found') {
+      window.location.href = "/setup-profile";
+      return;
+    }
+
+    // 2. เซ็ตสถานะ Admin
+    setIsAdmin(data.profile?.is_admin || false);
+
+    // 3. ถ้ามีหนี้ เซ็ตค่าแล้วหยุดแค่นี้เลย (Block หน้าจอ)
+    if (data.outstanding_debt) {
+      setOutstandingDebt(data.outstanding_debt);
+      setLoading(false);
+      return;
+    }
+
+    // 4. ถ้ามี Session จ่ายข้อมูลเข้าระบบ
+    if (data.session_today) {
+      setSessionToday(data.session_today);
+      checkQueueTime(data.session_today.start_time);
+      setPlayerCount(data.player_count);
+      setAllProfiles(data.all_profiles);
+      setMyRecord(data.my_record);
+    } else {
+      setSessionToday(null);
+    }
+
     setLoading(false);
   };
 
