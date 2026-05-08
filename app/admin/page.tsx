@@ -162,45 +162,152 @@ export default function AdminDashboard() {
     setShowResultModal(false); 
     setLoading(true);
 
-    // ดึงทีมจากฐานข้อมูล หรือ ใช้ AI จัดคู่ถ้าไม่มี
-    let winners: any[] = [];
-    let isDraw = false;
-    
+    // 1. แยกทีมและหา ELO เฉลี่ยของแต่ละทีม
     const tA = matchToFinish.filter(p => p.team === 'A');
     const tB = matchToFinish.filter(p => p.team === 'B');
-    const hasManualTeams = tA.length > 0 && tB.length > 0;
     
-    const pairing = hasManualTeams ? { teamA: tA, teamB: tB } : getBestPairing(matchToFinish);
+    // ถ้าไม่มีข้อมูลทีม (เกิดจากการใช้ AI จัดแบบไม่มีคอลัมน์ team) ให้ใช้ getBestPairing ย้อนหลัง
+    const pairing = (tA.length > 0 && tB.length > 0) ? { teamA: tA, teamB: tB } : getBestPairing(matchToFinish);
+    const finalTeamA = pairing?.teamA || [];
+    const finalTeamB = pairing?.teamB || [];
 
-    if (resultType === 'teamA') winners = pairing?.teamA || [];
-    else if (resultType === 'teamB') winners = pairing?.teamB || [];
-    else isDraw = true;
+    const getAvgElo = (team: any[]) => {
+      if (team.length === 0) return 1200;
+      const sum = team.reduce((acc, p) => acc + (p.profiles?.elo_rating || 1200), 0);
+      return sum / team.length;
+    };
 
+    const teamAAvgElo = getAvgElo(finalTeamA);
+    const teamBAvgElo = getAvgElo(finalTeamB);
+
+    // 2. คำนวณโอกาสชนะ (Expected Score) ตามสูตร ELO
+    const expectedA = 1 / (1 + Math.pow(10, (teamBAvgElo - teamAAvgElo) / 400));
+    const expectedB = 1 / (1 + Math.pow(10, (teamAAvgElo - teamBAvgElo) / 400));
+
+    // 3. กำหนดค่าผลลัพธ์ (S)
+    const scoreA = resultType === 'draw' ? 0.5 : (resultType === 'teamA' ? 1 : 0);
+    const scoreB = resultType === 'draw' ? 0.5 : (resultType === 'teamB' ? 1 : 0);
+
+    // 4. คำนวณแต้มดิบที่จะบวก/ลบ (K-Factor = 32)
+    const K = 32;
+    const deltaA = Math.round(K * (scoreA - expectedA));
+    const deltaB = Math.round(K * (scoreB - expectedB));
+
+    // 5. บันทึกข้อมูลลง Database
     for (const p of matchToFinish) {
-      const isWinner = winners.some(w => w.id === p.id);
-      const currentElo = p.profiles?.elo_rating || 1200;
-      let newElo = currentElo;
+      const isTeamA = finalTeamA.some(member => member.id === p.id);
+      const isWinner = (isTeamA && resultType === 'teamA') || (!isTeamA && resultType === 'teamB');
+      const isDraw = resultType === 'draw';
       
-      if (!isDraw) newElo = isWinner ? currentElo + 15 : Math.max(0, currentElo - 10);
+      const eloChange = isTeamA ? deltaA : deltaB;
+      const currentElo = p.profiles?.elo_rating || 1200;
+      const newElo = Math.max(0, currentElo + eloChange); // ป้องกัน ELO ติดลบ
 
+      // อัปเดตคิวและสถิติ
       await supabase.from("session_participants").update({
           queue_status: 'waiting',
           court_number: null,
-          team: null, // เคลียร์ทีม
+          team: null,
           games_played_today: p.games_played_today + 1,
           accumulated_shuttle_fee: (p.accumulated_shuttle_fee || 0) + 27,
           join_time: new Date().toISOString(),
           wins: (p.wins || 0) + (!isDraw && isWinner ? 1 : 0),
           losses: (p.losses || 0) + (!isDraw && !isWinner ? 1 : 0),
           draws: (p.draws || 0) + (isDraw ? 1 : 0)
-        }).eq('id', p.id);
+      }).eq('id', p.id);
 
+      // อัปเดต ELO โปรไฟล์
       if (p.profile_id) {
         await supabase.from("profiles").update({ elo_rating: newElo }).eq('id', p.profile_id);
       }
     }
 
-    alert(isDraw ? "⚖️ เสมอกัน! (ไม่หัก/ไม่เพิ่ม ELO)" : `🏆 ทีม ${resultType === 'teamA' ? '1 (ฟ้า)' : '2 (ส้ม)'} ชนะ! (บวก 15 แต้ม)`);
+    // 🌟 ดึง session_id จากผู้เล่นคนแรกในคอร์ดเลย
+    const currentSessionId = matchToFinish[0]?.session_id;
+
+    // 🌟 บันทึกประวัติการแข่งลง match_history ก่อนแจ้งเตือน
+    await supabase.from("match_history").insert({
+        session_id: currentSessionId,
+        team_a: finalTeamA.map((p: any) => ({ 
+            id: p.id, 
+            profile_id: p.profile_id, 
+            display_name: p.profiles?.display_name 
+        })),
+        team_b: finalTeamB.map((p: any) => ({ 
+            id: p.id, 
+            profile_id: p.profile_id, 
+            display_name: p.profiles?.display_name 
+        })),
+        winner: resultType,
+        delta_a: deltaA,
+        delta_b: deltaB
+    });
+
+    // แจ้งเตือนแบบโปรๆ บอกเลยว่าใครได้แต้มเท่าไหร่
+    const alertMsg = resultType === 'draw' 
+      ? `⚖️ เสมอกัน!\nทีม 1 เปลี่ยน ${deltaA > 0 ? '+'+deltaA : deltaA} แต้ม\nทีม 2 เปลี่ยน ${deltaB > 0 ? '+'+deltaB : deltaB} แต้ม`
+      : `🏆 ทีม ${resultType === 'teamA' ? '1 (ฟ้า)' : '2 (ส้ม)'} ชนะ!\nทีม 1 ได้ ${deltaA > 0 ? '+'+deltaA : deltaA} แต้ม\nทีม 2 ได้ ${deltaB > 0 ? '+'+deltaB : deltaB} แต้ม`;
+    
+    alert(alertMsg);
+    fetchData();
+    setLoading(false);
+  };
+
+  const handleUndoMatch = async (match: any) => {
+    if (!confirm("⚠️ ต้องการยกเลิกผลการแข่งนี้และคืนคะแนน ELO ใช่หรือไม่?\n(สถิติจำนวนเกมและค่าลูกจะถูกหักออกด้วย)")) return;
+    
+    setLoading(true);
+
+    // 1. คืนค่าให้ทีม A
+    for (const p of match.team_a) {
+      const isWinner = match.winner === 'teamA';
+      const isDraw = match.winner === 'draw';
+      
+      // ดึงค่าปัจจุบันมาหักลบ
+      const { data: currentParticipant } = await supabase.from("session_participants").select("*").eq('id', p.id).single();
+      const { data: currentProfile } = await supabase.from("profiles").select("elo_rating").eq('id', p.profile_id).single();
+
+      if (currentParticipant && currentProfile) {
+        await supabase.from("session_participants").update({
+          games_played_today: Math.max(0, currentParticipant.games_played_today - 1),
+          accumulated_shuttle_fee: Math.max(0, (currentParticipant.accumulated_shuttle_fee || 0) - 27),
+          wins: Math.max(0, currentParticipant.wins - (!isDraw && isWinner ? 1 : 0)),
+          losses: Math.max(0, currentParticipant.losses - (!isDraw && !isWinner ? 1 : 0)),
+          draws: Math.max(0, currentParticipant.draws - (isDraw ? 1 : 0))
+        }).eq('id', p.id);
+
+        await supabase.from("profiles").update({
+          elo_rating: currentProfile.elo_rating - match.delta_a
+        }).eq('id', p.profile_id);
+      }
+    }
+
+    // 2. คืนค่าให้ทีม B (ทำเหมือนทีม A แต่ใช้ delta_b)
+    for (const p of match.team_b) {
+      const isWinner = match.winner === 'teamB';
+      const isDraw = match.winner === 'draw';
+      const { data: currentParticipant } = await supabase.from("session_participants").select("*").eq('id', p.id).single();
+      const { data: currentProfile } = await supabase.from("profiles").select("elo_rating").eq('id', p.profile_id).single();
+
+      if (currentParticipant && currentProfile) {
+        await supabase.from("session_participants").update({
+          games_played_today: Math.max(0, currentParticipant.games_played_today - 1),
+          accumulated_shuttle_fee: Math.max(0, (currentParticipant.accumulated_shuttle_fee || 0) - 27),
+          wins: Math.max(0, currentParticipant.wins - (!isDraw && isWinner ? 1 : 0)),
+          losses: Math.max(0, currentParticipant.losses - (!isDraw && !isWinner ? 1 : 0)),
+          draws: Math.max(0, currentParticipant.draws - (isDraw ? 1 : 0))
+        }).eq('id', p.id);
+
+        await supabase.from("profiles").update({
+          elo_rating: currentProfile.elo_rating - match.delta_b
+        }).eq('id', p.profile_id);
+      }
+    }
+
+    // 3. ลบประวัตินี้ทิ้ง
+    await supabase.from("match_history").delete().eq('id', match.id);
+    
+    alert("✅ ดึงคะแนนคืนเรียบร้อย!");
     fetchData();
     setLoading(false);
   };

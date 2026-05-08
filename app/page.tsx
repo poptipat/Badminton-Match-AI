@@ -142,10 +142,13 @@ export default function Home() {
   };
 
   const handleLogin = async () => {
-    await supabase.auth.signInWithOAuth({
+    // 🌟 รับค่า error ออกมาจากฟังก์ชัน
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "custom:line" as any,
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: `${window.location.origin}/` }
     });
+
+    if (error) console.error("Login error:", error);
   };
 
   const handleLogout = async () => {
@@ -160,20 +163,41 @@ export default function Home() {
   const handleReserveSlot = async () => {
     if (!sessionToday || !user) return;
     
-    const { error } = await supabase
-      .from("session_participants")
-      .insert({
-        session_id: sessionToday.id,
-        profile_id: user.id,
-        preferred_partner_id: null,
-        payment_status: "unpaid",
-        queue_status: "resting", 
-        total_amount_due: sessionToday.court_fee_flat 
-      });
+    // 🌟 เปลี่ยนจากการ Insert ตรงๆ เป็นการเรียกใช้ RPC (Remote Procedure Call)
+    const { data, error } = await supabase
+     .rpc('reserve_slot',
+     {
+      p_session_id: sessionToday.id,
+      p_profile_id: user.id,
+      p_fee: sessionToday.court_fee_flat,
+      preferred_partner_id: null,
+      payment_status: "unpaid",
+      queue_status: "resting", 
+      total_amount_due: sessionToday.court_fee_flat 
+    });
 
-    if (!error) {
-      alert("✅ จองโควต้าสำเร็จ!");
-      checkUserAndSession(); 
+    if (error) {
+      alert("เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูลครับ");
+      console.error(error);
+      return;
+    }
+
+    // เช็คผลลัพธ์ที่ตอบกลับมาจาก Database
+    if (data && data.success === false) {
+      alert(data.message); // เด้งเตือนว่าคิวเต็มแล้ว (โดนตัดหน้า)
+      checkUserAndSession(); // รีเฟรชข้อมูลให้เห็นตัวเลขปัจจุบัน
+      return;
+    }
+
+    // ถ้าจองสำเร็จ
+    if (data && data.success === true) {
+      if (data.reservation_type === 'pay_first') {
+        alert("✅ จองโควต้าสำเร็จ! ระบบจะพาไปหน้าชำระเงินเพื่อยืนยันสิทธิ์ลงคิวนะครับ");
+        window.location.href = "/checkout"; 
+      } else {
+        alert("✅ จองโควต้าสำเร็จ! เมื่อเดินทางมาถึงคอร์ดแล้ว อย่าลืมมากดปุ่ม 'ลงคิวรอตี' นะครับ 🏸");
+        checkUserAndSession(); 
+      }
     }
   };
 
