@@ -437,16 +437,16 @@ export default function AdminDashboard() {
             
             <div className="space-y-4">
               <button onClick={() => confirmMatchResult('teamA')} className="w-full bg-blue-900/20 border border-blue-500/50 hover:bg-blue-900/40 text-left p-4 rounded-2xl transition flex flex-col items-center">
-                <span className="text-blue-400 font-bold mb-1">🏆 ทีม 1 (ฟ้า) ชนะ (+15 ELO)</span>
+                <span className="text-blue-400 font-bold mb-1">🏆 ทีม 1 (ฟ้า) ชนะ</span>
                 <span className="text-gray-300 text-sm text-center">{modalPairing.teamA[0].profiles.display_name} & {modalPairing.teamA[1].profiles.display_name}</span>
               </button>
 
               <button onClick={() => confirmMatchResult('draw')} className="w-full bg-gray-800 border border-gray-700 hover:bg-gray-700 p-4 rounded-2xl transition font-bold text-gray-300">
-                ⚖️ เสมอกัน 1-1 เซ็ต (ELO คงเดิม)
+                ⚖️ เสมอกัน 1-1 เซ็ต
               </button>
 
               <button onClick={() => confirmMatchResult('teamB')} className="w-full bg-orange-900/20 border border-orange-500/50 hover:bg-orange-900/40 text-left p-4 rounded-2xl transition flex flex-col items-center">
-                <span className="text-orange-400 font-bold mb-1">🏆 ทีม 2 (ส้ม) ชนะ (+15 ELO)</span>
+                <span className="text-orange-400 font-bold mb-1">🏆 ทีม 2 (ส้ม) ชนะ</span>
                 <span className="text-gray-300 text-sm text-center">{modalPairing.teamB[0].profiles.display_name} & {modalPairing.teamB[1].profiles.display_name}</span>
               </button>
             </div>
@@ -638,8 +638,8 @@ export default function AdminDashboard() {
                 <div key={match.id} className="bg-gray-800/50 border border-gray-700 p-4 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4 hover:bg-gray-800 transition">
                   
                   {/* ข้อมูลการแข่ง */}
-                  <div className="flex-1 w-full">
-                    <div className="flex items-center justify-between mb-2">
+                  <div className="flex-1 w-full min-w-0">
+                    <div className="flex items-center justify-between mb-3">
                       <span className="text-xs font-bold text-gray-500">
                         {new Date(match.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
                       </span>
@@ -647,40 +647,44 @@ export default function AdminDashboard() {
                         <span className="bg-gray-700 text-gray-300 text-[10px] font-bold px-2 py-0.5 rounded">เสมอ (DRAW)</span>
                       ) : (
                         <span className="bg-yellow-500/20 text-yellow-500 text-[10px] font-bold px-2 py-0.5 rounded">
-                          ผู้ชนะ: {match.winner === 'teamA' ? 'ทีมซ้าย' : 'ทีมขวา'}
+                          ผู้ชนะ: {match.winner === 'teamA' ? 'ทีม 1' : 'ทีม 2'}
                         </span>
                       )}
                     </div>
                     
-                    <div className="flex items-center gap-2">
+                    {/* 🌟 แก้อาการตกขอบ: ให้ซ้อนบนล่างในมือถือ (flex-col) และเรียงซ้ายขวาในคอม (md:flex-row) */}
+                    <div className="flex flex-col md:flex-row md:items-center gap-2 w-full">
                       {/* ทีม A */}
-                      <div className={`flex-1 p-2 rounded-xl border ${match.winner === 'teamA' ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-gray-900 border-gray-800'}`}>
+                      <div className={`w-full md:flex-1 p-3 rounded-xl border ${match.winner === 'teamA' ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-gray-900 border-gray-800'}`}>
                         <p className="text-sm text-gray-300 font-medium truncate">
                           {match.team_a.map((p: any) => p.display_name).join(' & ')}
                         </p>
-                        <p className={`text-xs font-bold mt-1 ${match.delta_a >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <p className={`text-xs font-bold mt-1.5 ${match.delta_a >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {match.delta_a > 0 ? '+' : ''}{match.delta_a} ELO
                         </p>
                       </div>
                       
-                      <span className="text-gray-600 font-black text-sm">VS</span>
+                      {/* สัญลักษณ์ VS */}
+                      <div className="text-center py-0.5 md:py-0">
+                        <span className="text-gray-600 font-black text-xs md:text-sm">VS</span>
+                      </div>
                       
                       {/* ทีม B */}
-                      <div className={`flex-1 p-2 rounded-xl border ${match.winner === 'teamB' ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-gray-900 border-gray-800'}`}>
+                      <div className={`w-full md:flex-1 p-3 rounded-xl border ${match.winner === 'teamB' ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-gray-900 border-gray-800'}`}>
                         <p className="text-sm text-gray-300 font-medium truncate">
                           {match.team_b.map((p: any) => p.display_name).join(' & ')}
                         </p>
-                        <p className={`text-xs font-bold mt-1 ${match.delta_b >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <p className={`text-xs font-bold mt-1.5 ${match.delta_b >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {match.delta_b > 0 ? '+' : ''}{match.delta_b} ELO
                         </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* ปุ่ม Cancel */}
+                  {/* 🌟 ปรับปุ่ม Cancel ให้กว้างเต็มจอในมือถือ เพื่อความกดง่าย */}
                   <button 
                     onClick={() => handleUndoMatch(match)}
-                    className="bg-gray-900 border border-rose-500/30 hover:bg-rose-900/30 hover:border-rose-500 text-rose-400 text-sm font-bold py-2 px-4 rounded-xl transition-all whitespace-nowrap active:scale-95 flex items-center gap-1"
+                    className="w-full md:w-auto mt-2 md:mt-0 bg-gray-900 border border-rose-500/30 hover:bg-rose-900/30 hover:border-rose-500 text-rose-400 text-sm font-bold py-3 md:py-2 px-4 rounded-xl transition-all active:scale-95 flex justify-center items-center gap-1"
                   >
                     <span>❌</span> ยกเลิกผล
                   </button>

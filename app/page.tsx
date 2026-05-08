@@ -457,8 +457,20 @@ export default function Home() {
                   </div>
                 </>
               ) : (
-                <div className="py-4">
+                <div className="py-4 space-y-4">
                   <p className="text-slate-500 font-medium">วันนี้แอดมินยังไม่เปิดก๊วนครับ 😴</p>
+                  
+                  {/* 🌟 ย้ายปุ่มแอดมินมาใส่ตรงนี้ด้วย! (ตอนก๊วนปิด แอดมินจะได้เห็น) */}
+                  {isAdmin && (
+                    <div className="border-t border-slate-200 pt-5 mt-5 space-y-3">
+                      <a href="/admin/settings" className="flex items-center justify-center bg-[#013458] text-[#F5A201] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#00537A] transition-all shadow-sm active:scale-95 border border-[#FFBA42]/30">
+                        👑 ไปหน้าตั้งค่า (เปิดก๊วน)
+                      </a>
+                      <a href="/admin" className="flex items-center justify-center bg-white text-[#013458] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-slate-50 transition-all shadow-sm active:scale-95 border border-slate-300">
+                        📊 เข้ากระดานแอดมิน
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
