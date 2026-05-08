@@ -97,21 +97,35 @@ export default function AdminPayments() {
     setLoading(false);
   };
 
-  // 🌟 ลอจิกไม้ตาย! แก้อาการยอดรวมมั่ว
-  const handleApprove = async (id: string, currentStatus: string, shuttleFee: number) => {
+  // 🌟 ลอจิกแก้บั๊ก: อิงจาก "ประเภทของก๊วน" เท่านั้น ไม่อิงจากยอดเงินลูกแบด
+  const handleApprove = async (id: string, currentStatus: string, sessionId: string) => {
     const confirmApprove = confirm("คุณตรวจสอบยอดเงินในบัญชีว่าเข้าจริงแล้ว ใช่หรือไม่?");
     if (!confirmApprove) return;
     
+    setLoading(true);
+
+    // ดึงประเภทการตั้งค่าของก๊วนนี้มาเช็กก่อน
+    const { data: sessionData } = await supabase
+      .from('daily_sessions')
+      .select('reservation_type')
+      .eq('id', sessionId)
+      .single();
+
     let nextStatus = 'paid';
     
-    // 1. ถ้าส่งสลิปมาตรวจ แต่เขา "ยังไม่เคยตีแบดเลยแม้แต่เกมเดียว (shuttleFee = 0)"
-    // แปลว่านี่คือสลิปโอนค่าคอร์ดตอนแรก ให้ล็อกสถานะไว้แค่ court_paid เท่านั้น ห้ามข้ามไป paid เด็ดขาด!
-    if (currentStatus === 'pending' && shuttleFee === 0) {
-        nextStatus = 'court_paid';
-    }
-
-    // 2. ถ้าเป็นการส่งสลิปรอบสอง (จ่ายค่าลูกรอบจบ) ให้เป็น paid ได้
-    if (currentStatus === 'pending_final') {
+    // 1. ถ้าก๊วนนี้เป็นระบบโอนก่อน (Pay First)
+    if (sessionData?.reservation_type === 'pay_first') {
+        if (currentStatus === 'pending') {
+            // ถ้าส่งสลิปใบแรกมา (ค่าสนาม) ให้ล็อกเป็น court_paid เสมอ
+            nextStatus = 'court_paid';
+        } else if (currentStatus === 'pending_final') {
+            // ถ้าส่งสลิปรอบจบมา (ค่าลูก) ค่อยปรับเป็น paid จบเกม
+            nextStatus = 'paid';
+        }
+    } 
+    // 2. ถ้าก๊วนนี้เป็นระบบจ่ายทีหลัง (Pay Later)
+    else {
+        // จ่ายรอบเดียวจบ ให้เป็น paid ได้เลย
         nextStatus = 'paid';
     }
 
@@ -126,12 +140,9 @@ export default function AdminPayments() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-yellow-500 font-bold text-xl">กำลังโหลดระบบการเงิน...</div>;
 
   const pending = participants.filter(p => p.payment_status === 'pending' || p.payment_status === 'pending_final');
-  // ค้างชำระ = unpaid, resting หรือ จ่ายแค่ค่าสนาม(court_paid)แต่ยังค้างค่าลูก
   const unpaid = participants.filter(p => ['unpaid', 'resting'].includes(p.payment_status) || (p.payment_status === 'court_paid' && (p.accumulated_shuttle_fee || 0) > 0));
-  // จ่ายครบแล้ว = paid หรือ จ่ายแค่ค่าสนาม(court_paid)แต่ยังไม่ได้ตีลูกเลยซักลูก
   const paid = participants.filter(p => p.payment_status === 'paid' || (p.payment_status === 'court_paid' && (p.accumulated_shuttle_fee || 0) === 0));
 
-  
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4 md:p-6 font-sans">
       <div className="max-w-5xl mx-auto">
@@ -175,7 +186,7 @@ export default function AdminPayments() {
               {pending.length === 0 ? <p className="text-gray-500 py-4 text-center text-sm">ไม่มีสลิปใหม่</p> : (
                 <div className="space-y-4">
                   {pending.map(p => {
-                    // 🌟 ถ้ารอตรวจรอบสุดท้าย ให้โชว์ยอดแค่ค่าลูกแบด
+                    // ถ้ารอตรวจรอบสุดท้าย ให้โชว์ยอดแค่ค่าลูกแบด
                     const amountToApprove = p.payment_status === 'pending_final' 
                       ? (p.accumulated_shuttle_fee || 0) 
                       : (p.total_amount_due + (p.accumulated_shuttle_fee || 0));
@@ -206,8 +217,8 @@ export default function AdminPayments() {
                             </div>
                           )}
                           <button 
-                            // 🌟 ส่งค่า accumulated_shuttle_fee ไปให้ฟังก์ชันเช็กด้วย
-                            onClick={() => handleApprove(p.id, p.payment_status, p.accumulated_shuttle_fee || 0)}
+                            // 🌟 แก้ตรงนี้: ส่ง p.session_id ไปแทน
+                            onClick={() => handleApprove(p.id, p.payment_status, p.session_id)}
                             className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition shadow-md active:scale-95"
                           >
                             ✅ ยืนยันยอด
