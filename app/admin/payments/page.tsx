@@ -78,8 +78,8 @@ export default function AdminPayments() {
                if (p.payment_status === 'paid') {
                    collected += totalFee;
                } else if (p.payment_status === 'court_paid') {
-                   collected += courtFee; 
-                   unpaidAmt += shuttleFee; 
+                   collected += courtFee; // จ่ายค่าสนามแล้ว
+                   unpaidAmt += shuttleFee; // ค้างค่าลูก
                } else if (p.payment_status === 'pending_final') {
                    collected += courtFee;
                    pendingAmt += shuttleFee;
@@ -126,9 +126,12 @@ export default function AdminPayments() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-yellow-500 font-bold text-xl">กำลังโหลดระบบการเงิน...</div>;
 
   const pending = participants.filter(p => p.payment_status === 'pending' || p.payment_status === 'pending_final');
+  // ค้างชำระ = unpaid, resting หรือ จ่ายแค่ค่าสนาม(court_paid)แต่ยังค้างค่าลูก
   const unpaid = participants.filter(p => ['unpaid', 'resting'].includes(p.payment_status) || (p.payment_status === 'court_paid' && (p.accumulated_shuttle_fee || 0) > 0));
+  // จ่ายครบแล้ว = paid หรือ จ่ายแค่ค่าสนาม(court_paid)แต่ยังไม่ได้ตีลูกเลยซักลูก
   const paid = participants.filter(p => p.payment_status === 'paid' || (p.payment_status === 'court_paid' && (p.accumulated_shuttle_fee || 0) === 0));
 
+  
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4 md:p-6 font-sans">
       <div className="max-w-5xl mx-auto">
@@ -172,6 +175,7 @@ export default function AdminPayments() {
               {pending.length === 0 ? <p className="text-gray-500 py-4 text-center text-sm">ไม่มีสลิปใหม่</p> : (
                 <div className="space-y-4">
                   {pending.map(p => {
+                    // 🌟 ถ้ารอตรวจรอบสุดท้าย ให้โชว์ยอดแค่ค่าลูกแบด
                     const amountToApprove = p.payment_status === 'pending_final' 
                       ? (p.accumulated_shuttle_fee || 0) 
                       : (p.total_amount_due + (p.accumulated_shuttle_fee || 0));
