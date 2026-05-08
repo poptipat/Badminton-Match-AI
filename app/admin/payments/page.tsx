@@ -78,8 +78,8 @@ export default function AdminPayments() {
                if (p.payment_status === 'paid') {
                    collected += totalFee;
                } else if (p.payment_status === 'court_paid') {
-                   collected += courtFee; // จ่ายค่าสนามแล้ว
-                   unpaidAmt += shuttleFee; // ค้างค่าลูก
+                   collected += courtFee; 
+                   unpaidAmt += shuttleFee; 
                } else if (p.payment_status === 'pending_final') {
                    collected += courtFee;
                    pendingAmt += shuttleFee;
@@ -97,23 +97,22 @@ export default function AdminPayments() {
     setLoading(false);
   };
 
-  // 🌟 อัปเกรดฟังก์ชันยืนยันยอด ให้ดึงข้อมูลสดๆ จาก DB ป้องกันบั๊กข้ามสถานะ
-  const handleApprove = async (id: string, currentStatus: string, sessionId: string) => {
+  // 🌟 ลอจิกไม้ตาย! แก้อาการยอดรวมมั่ว
+  const handleApprove = async (id: string, currentStatus: string, shuttleFee: number) => {
     const confirmApprove = confirm("คุณตรวจสอบยอดเงินในบัญชีว่าเข้าจริงแล้ว ใช่หรือไม่?");
     if (!confirmApprove) return;
-
-    // 🌟 ดึงข้อมูลก๊วนใหม่สดๆ เพื่อเช็คว่าก๊วนนี้เป็นระบบ Pay First ชัวร์ๆ
-    const { data: sessionData } = await supabase
-      .from('daily_sessions')
-      .select('reservation_type')
-      .eq('id', sessionId)
-      .single();
     
     let nextStatus = 'paid';
     
-    // 🌟 ถ้าตรวจเจอว่าเป็น Pay First และเป็นสลิปใบแรก (pending) ให้ตั้งเป็น court_paid เท่านั้น!
-    if (currentStatus === 'pending' && sessionData?.reservation_type === 'pay_first') {
+    // 1. ถ้าส่งสลิปมาตรวจ แต่เขา "ยังไม่เคยตีแบดเลยแม้แต่เกมเดียว (shuttleFee = 0)"
+    // แปลว่านี่คือสลิปโอนค่าคอร์ดตอนแรก ให้ล็อกสถานะไว้แค่ court_paid เท่านั้น ห้ามข้ามไป paid เด็ดขาด!
+    if (currentStatus === 'pending' && shuttleFee === 0) {
         nextStatus = 'court_paid';
+    }
+
+    // 2. ถ้าเป็นการส่งสลิปรอบสอง (จ่ายค่าลูกรอบจบ) ให้เป็น paid ได้
+    if (currentStatus === 'pending_final') {
+        nextStatus = 'paid';
     }
 
     await supabase
@@ -127,9 +126,7 @@ export default function AdminPayments() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-yellow-500 font-bold text-xl">กำลังโหลดระบบการเงิน...</div>;
 
   const pending = participants.filter(p => p.payment_status === 'pending' || p.payment_status === 'pending_final');
-  // ค้างชำระ = unpaid, resting หรือ จ่ายแค่ค่าสนาม(court_paid)แต่ยังค้างค่าลูก
   const unpaid = participants.filter(p => ['unpaid', 'resting'].includes(p.payment_status) || (p.payment_status === 'court_paid' && (p.accumulated_shuttle_fee || 0) > 0));
-  // จ่ายครบแล้ว = paid หรือ จ่ายแค่ค่าสนาม(court_paid)แต่ยังไม่ได้ตีลูกเลยซักลูก
   const paid = participants.filter(p => p.payment_status === 'paid' || (p.payment_status === 'court_paid' && (p.accumulated_shuttle_fee || 0) === 0));
 
   return (
@@ -175,7 +172,6 @@ export default function AdminPayments() {
               {pending.length === 0 ? <p className="text-gray-500 py-4 text-center text-sm">ไม่มีสลิปใหม่</p> : (
                 <div className="space-y-4">
                   {pending.map(p => {
-                    // 🌟 ถ้ารอตรวจรอบสุดท้าย ให้โชว์ยอดแค่ค่าลูกแบด
                     const amountToApprove = p.payment_status === 'pending_final' 
                       ? (p.accumulated_shuttle_fee || 0) 
                       : (p.total_amount_due + (p.accumulated_shuttle_fee || 0));
@@ -206,6 +202,7 @@ export default function AdminPayments() {
                             </div>
                           )}
                           <button 
+                            // 🌟 ส่งค่า accumulated_shuttle_fee ไปให้ฟังก์ชันเช็กด้วย
                             onClick={() => handleApprove(p.id, p.payment_status, p.accumulated_shuttle_fee || 0)}
                             className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition shadow-md active:scale-95"
                           >
