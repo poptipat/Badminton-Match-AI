@@ -18,20 +18,24 @@ export default function CheckoutPage() {
   const fetchCheckoutData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // 🌟 หาบิลที่ยังไม่จ่ายก่อน (ดึงข้ามวันได้)
+      // ดึงบิลที่สถานะยังไม่ paid 100%
       const { data: unpaidBill } = await supabase
         .from("session_participants")
         .select("*, profiles!profile_id(display_name)")
         .eq("profile_id", user.id)
-        .in("payment_status", ["unpaid", "pending"])
-        .order('id', { ascending: false }) // เอาบิลล่าสุด
+        .in("payment_status", ["unpaid", "pending", "pending_final", "court_paid"])
+        .order('id', { ascending: false }) 
         .limit(1)
         .single();
 
       if (unpaidBill) {
-        setParticipant(unpaidBill);
+        // ถ้าเป็น court_paid (จ่ายค่าสนามแล้ว) แต่ยังไม่ได้ตีลูกเลย ก็ยังไม่ต้องโชว์บิล
+        if (unpaidBill.payment_status === 'court_paid' && (unpaidBill.accumulated_shuttle_fee || 0) === 0) {
+           setParticipant(null);
+        } else {
+           setParticipant(unpaidBill);
+        }
       } else {
-        // ถ้าไม่มีบิลค้าง ให้ดึงของก๊วนวันนี้มาโชว์ (ถ้ามี)
         const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).single();
         if (session) {
           const { data: partData } = await supabase
@@ -59,17 +63,19 @@ export default function CheckoutPage() {
 
     if (uploadError) {
       alert("อัปโหลดสลิปไม่สำเร็จ กรุณาลองใหม่");
-      console.error(uploadError);
       setUploading(false);
       return;
     }
 
     const { data: publicUrlData } = supabase.storage.from('slips').getPublicUrl(filePath);
 
+    // 🌟 ถ้าเคยจ่ายค่าสนามแล้ว (`court_paid`) ให้ปรับเป็นรอตรวจค่าลูก (`pending_final`)
+    const nextStatus = participant.payment_status === 'court_paid' ? 'pending_final' : 'pending';
+
     await supabase
       .from("session_participants")
       .update({
-        payment_status: "pending", 
+        payment_status: nextStatus, 
         payment_slip_url: publicUrlData.publicUrl,
         checkout_time: new Date().toISOString()
       })
@@ -82,20 +88,22 @@ export default function CheckoutPage() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold text-lg">กำลังดึงข้อมูลบิล...</div>;
 
-  if (!participant) return (
+  if (!participant || participant.payment_status === 'paid') return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
-      <p className="text-slate-500 mb-4 font-medium text-lg">คุณไม่มีบิลที่ต้องชำระครับ</p>
+      <p className="text-slate-500 mb-4 font-medium text-lg">คุณไม่มีบิลที่ต้องชำระครับ 🎉</p>
       <Link href="/" className="text-[#013C58] hover:text-[#F5A201] underline font-bold transition">กลับหน้าหลัก</Link>
     </div>
   );
 
-  const gamesCount = participant.games_played_today || 0;
-  const totalShuttleFee = gamesCount * 27; 
-  // ค่าสนามดึงจากสิ่งที่บันทึกไว้ในบิลนั้นๆ
-  const courtFee = participant.total_amount_due || 0; 
+  // 🌟 ลอจิกแยกค่าสนาม (ถ้าเป็น court_paid หรือ pending_final แปลว่าค่าสนามจ่ายแล้ว ให้เหลือ 0)
+  const isCourtPaid = participant.payment_status === 'court_paid' || participant.payment_status === 'pending_final';
+  const courtFee = isCourtPaid ? 0 : (participant.total_amount_due || 0); 
+  const totalShuttleFee = participant.accumulated_shuttle_fee || 0; 
   const grandTotal = totalShuttleFee + courtFee; 
+  const gamesCount = participant.games_played_today || 0;
 
   const qrCodeUrl = `https://promptpay.io/${PROMPTPAY_NUMBER}/${grandTotal}`;
+  const isPending = participant.payment_status === 'pending' || participant.payment_status === 'pending_final';
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans flex items-center justify-center">
@@ -110,7 +118,9 @@ export default function CheckoutPage() {
           <div className="bg-slate-50 rounded-2xl p-5 mb-6 border border-slate-200">
             <div className="flex justify-between mb-3 text-slate-600 font-medium">
               <span>ค่าสนาม (เหมา)</span>
-              <span className="text-[#013C58] font-bold">{courtFee} บาท</span>
+              <span className={isCourtPaid ? "text-emerald-500 font-bold" : "text-[#013C58] font-bold"}>
+                {isCourtPaid ? "ชำระแล้ว ✅" : `${courtFee} บาท`}
+              </span>
             </div>
             <div className="flex justify-between mb-3 text-slate-600 font-medium">
               <span>ค่าลูกแบด ({gamesCount} เกม)</span>
@@ -118,22 +128,16 @@ export default function CheckoutPage() {
             </div>
             <hr className="my-4 border-slate-200" />
             <div className="flex justify-between font-black text-xl text-slate-800 items-end">
-              <span>ยอดรวมทั้งสิ้น</span>
+              <span>ยอดรวมที่ต้องโอน</span>
               <span className="text-3xl text-[#F5A201]">{grandTotal} <span className="text-lg">บาท</span></span>
             </div>
           </div>
 
-          {participant.payment_status === 'pending' ? (
+          {isPending ? (
             <div className="text-center p-6 bg-[#FFFBF0] rounded-2xl border border-[#F5A201]/30">
               <span className="text-4xl block mb-2">⏳</span>
               <h2 className="text-[#F5A201] font-bold text-lg">ส่งสลิปแล้ว รอตรวจสอบ</h2>
-              <p className="text-slate-500 text-sm mt-1">ขอบคุณครับ!</p>
-              <Link href="/" className="mt-5 inline-block bg-white border border-slate-200 px-6 py-2 rounded-xl text-slate-600 hover:text-[#013C58] font-semibold transition shadow-sm">กลับหน้าหลัก</Link>
-            </div>
-          ) : participant.payment_status === 'paid' ? (
-            <div className="text-center p-6 bg-emerald-50 rounded-2xl border border-emerald-200">
-              <span className="text-4xl block mb-2">✅</span>
-              <h2 className="text-emerald-600 font-bold text-lg">ชำระเงินเสร็จสมบูรณ์</h2>
+              <p className="text-slate-500 text-sm mt-1">แอดมินกำลังตรวจสอบยอด {grandTotal} บาทครับ</p>
               <Link href="/" className="mt-5 inline-block bg-white border border-slate-200 px-6 py-2 rounded-xl text-slate-600 hover:text-[#013C58] font-semibold transition shadow-sm">กลับหน้าหลัก</Link>
             </div>
           ) : (
@@ -155,8 +159,8 @@ export default function CheckoutPage() {
 
               <button 
                 onClick={handleUploadSlip}
-                disabled={uploading}
-                className={`w-full py-4 rounded-xl font-bold text-lg transition shadow-md ${uploading ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-[#F5A201] text-white hover:bg-[#FFBA42] active:scale-95'}`}
+                disabled={uploading || !file}
+                className={`w-full py-4 rounded-xl font-bold text-lg transition shadow-md ${uploading || !file ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-[#F5A201] text-white hover:bg-[#FFBA42] active:scale-95'}`}
               >
                 {uploading ? 'กำลังอัปโหลดรูป...' : 'ยืนยันการชำระเงิน'}
               </button>

@@ -6,8 +6,8 @@ import Link from "next/link";
 export default function AdminPayments() {
   const [participants, setParticipants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [latestSession, setLatestSession] = useState<any>(null);
 
-  // 🌟 State สำหรับสรุปยอดเงิน
   const [summary, setSummary] = useState({
     totalExpected: 0,
     totalCollected: 0,
@@ -28,17 +28,16 @@ export default function AdminPayments() {
   }, []);
 
   const fetchPayments = async () => {
-    // 🌟 ดึงข้อมูลบิลทั้งหมดที่สถานะไม่ใช่ paid (คือค้างจ่ายหรือรอตรวจ) จากทุกๆ ก๊วน
-    // และดึงข้อมูลทุกคนในก๊วนของวันนี้ (เผื่อมีคนตีอยู่แต่ยังไม่ได้จ่าย)
+    const { data: session } = await supabase
+      .from("daily_sessions")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
     
-    // 1. หาก๊วนที่กำลังเปิดอยู่ (ถ้ามี)
-    const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).single();
-    const currentSessionId = session ? session.id : null;
+    setLatestSession(session);
+    const targetSessionId = session ? session.id : null;
 
-    // 2. ดึงข้อมูล 2 ส่วน:
-    // - คนที่มีบิลค้าง (pending, unpaid, resting) ไม่ว่าก๊วนไหน
-    // - คนที่อยู่ในก๊วนวันนี้ (ไม่ว่าจะสถานะอะไร)
-    
     let query = supabase
       .from("session_participants")
       .select(`
@@ -53,11 +52,10 @@ export default function AdminPayments() {
       `)
       .order("checkout_time", { ascending: false });
 
-    // ถ้ามีก๊วนวันนี้ ให้ดึงรวมกัน ถ้าไม่มี ดึงเฉพาะคนที่ค้างจ่าย
-    if (currentSessionId) {
-       query = query.or(`payment_status.in.(pending,unpaid,resting),session_id.eq.${currentSessionId}`);
+    if (targetSessionId) {
+       query = query.or(`session_id.eq.${targetSessionId},payment_status.in.(pending,pending_final,unpaid,resting,court_paid)`);
     } else {
-       query = query.in("payment_status", ["pending", "unpaid", "resting"]);
+       query = query.in("payment_status", ["pending", "pending_final", "unpaid", "resting", "court_paid"]);
     }
 
     const { data } = await query;
@@ -65,46 +63,54 @@ export default function AdminPayments() {
     if (data) {
       setParticipants(data);
       
-      // 🌟 คำนวณสรุปยอด (คำนวณเฉพาะบิลที่ค้าง + บิลของวันนี้)
       let expected = 0, collected = 0, pendingAmt = 0, unpaidAmt = 0, games = 0;
       
       data.forEach(p => {
-        // คิดยอดรวมเฉพาะก๊วนวันนี้ หรือ ก๊วนเก่าที่ยังไม่ได้จ่าย
-        if (p.session_id === currentSessionId || p.payment_status !== 'paid') {
-           const totalFee = (p.total_amount_due || 0) + (p.accumulated_shuttle_fee || 0);
+        if (p.session_id === targetSessionId || p.payment_status !== 'paid') {
+           const courtFee = p.total_amount_due || 0;
+           const shuttleFee = p.accumulated_shuttle_fee || 0;
+           const totalFee = courtFee + shuttleFee;
            
-           // ไม่รวมยอด 0 บาทของก๊วนเก่า (เช่น คนที่กดลงชื่อแล้วยกเลิกก่อนเวลา)
            if (totalFee > 0) {
                expected += totalFee;
-               
-               // นับเกมเฉพาะของวันนี้ หรือคนที่ค้างจ่าย
                games += (p.games_played_today || 0);
 
-               if (p.payment_status === 'paid') collected += totalFee;
-               else if (p.payment_status === 'pending') pendingAmt += totalFee;
-               else unpaidAmt += totalFee; // สถานะ unpaid หรือ resting
+               if (p.payment_status === 'paid') {
+                   collected += totalFee;
+               } else if (p.payment_status === 'court_paid') {
+                   collected += courtFee; // จ่ายค่าสนามแล้ว
+                   unpaidAmt += shuttleFee; // ค้างค่าลูก
+               } else if (p.payment_status === 'pending_final') {
+                   collected += courtFee;
+                   pendingAmt += shuttleFee;
+               } else if (p.payment_status === 'pending') {
+                   pendingAmt += totalFee;
+               } else { 
+                   unpaidAmt += totalFee;
+               }
            }
         }
       });
 
-      setSummary({
-        totalExpected: expected,
-        totalCollected: collected,
-        totalPending: pendingAmt,
-        totalUnpaid: unpaidAmt,
-        totalGames: games
-      });
+      setSummary({ totalExpected: expected, totalCollected: collected, totalPending: pendingAmt, totalUnpaid: unpaidAmt, totalGames: games });
     }
     setLoading(false);
   };
 
-  const handleApprove = async (id: string) => {
+  const handleApprove = async (id: string, currentStatus: string, shuttleFee: number) => {
     const confirmApprove = confirm("คุณตรวจสอบยอดเงินในบัญชีว่าเข้าจริงแล้ว ใช่หรือไม่?");
     if (!confirmApprove) return;
 
+    let nextStatus = 'paid';
+    
+    // 🌟 ถ้าเป็นระบบ Pay First และแอดมินเพิ่งตรวจสลิปใบแรก (ยังไม่มีค่าลูก) ให้เป็นแค่ court_paid
+    if (currentStatus === 'pending' && latestSession?.reservation_type === 'pay_first' && shuttleFee === 0) {
+        nextStatus = 'court_paid';
+    }
+
     await supabase
       .from("session_participants")
-      .update({ payment_status: 'paid' })
+      .update({ payment_status: nextStatus })
       .eq('id', id);
       
     fetchPayments();
@@ -112,15 +118,15 @@ export default function AdminPayments() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-yellow-500 font-bold text-xl">กำลังโหลดระบบการเงิน...</div>;
 
-  const pending = participants.filter(p => p.payment_status === 'pending');
-  const paid = participants.filter(p => p.payment_status === 'paid');
-  const unpaid = participants.filter(p => p.payment_status === 'unpaid' || p.payment_status === 'resting');
+  const pending = participants.filter(p => p.payment_status === 'pending' || p.payment_status === 'pending_final');
+  // ค้างชำระ = unpaid, resting หรือ จ่ายแค่ค่าสนาม(court_paid)แต่ยังค้างค่าลูก
+  const unpaid = participants.filter(p => ['unpaid', 'resting'].includes(p.payment_status) || (p.payment_status === 'court_paid' && (p.accumulated_shuttle_fee || 0) > 0));
+  // จ่ายครบแล้ว = paid หรือ จ่ายแค่ค่าสนาม(court_paid)แต่ยังไม่ได้ตีลูกเลยซักลูก
+  const paid = participants.filter(p => p.payment_status === 'paid' || (p.payment_status === 'court_paid' && (p.accumulated_shuttle_fee || 0) === 0));
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4 md:p-6 font-sans">
       <div className="max-w-5xl mx-auto">
-        
-        {/* 🌟 Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-gray-800 pb-5 gap-4">
           <h1 className="text-2xl md:text-3xl font-black text-gray-100 flex items-center gap-2">
             <span className="text-emerald-500">💰</span> ระบบตรวจสลิป & บัญชี
@@ -130,7 +136,6 @@ export default function AdminPayments() {
           </Link>
         </div>
 
-        {/* 🌟 Dashboard สรุปยอดรายวัน */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800 shadow-sm text-center">
             <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">ยอดรวมที่ต้องได้</p>
@@ -152,11 +157,7 @@ export default function AdminPayments() {
         </div>
 
         <div className="grid lg:grid-cols-2 gap-6">
-          
-          {/* 🌟 คอลัมน์ซ้าย: รอตรวจสอบ & ค้างชำระ */}
           <div className="space-y-6">
-            
-            {/* โซนรอยืนยัน (สีส้ม) */}
             <div className="bg-orange-900/10 rounded-3xl p-5 md:p-6 shadow-xl border border-orange-500/30">
               <h2 className="text-lg md:text-xl font-bold text-orange-400 mb-4 flex items-center justify-between">
                 <span className="flex items-center gap-2"><span className="bg-orange-500/20 p-1.5 rounded-lg">⏳</span> รอตรวจสอบสลิป</span>
@@ -166,7 +167,11 @@ export default function AdminPayments() {
               {pending.length === 0 ? <p className="text-gray-500 py-4 text-center text-sm">ไม่มีสลิปใหม่</p> : (
                 <div className="space-y-4">
                   {pending.map(p => {
-                    const total = p.total_amount_due + (p.accumulated_shuttle_fee || 0);
+                    // 🌟 ถ้ารอตรวจรอบสุดท้าย ให้โชว์ยอดแค่ค่าลูกแบด
+                    const amountToApprove = p.payment_status === 'pending_final' 
+                      ? (p.accumulated_shuttle_fee || 0) 
+                      : (p.total_amount_due + (p.accumulated_shuttle_fee || 0));
+
                     return (
                       <div key={p.id} className="bg-gray-900 p-4 rounded-2xl border border-orange-500/50 flex flex-col justify-between shadow-sm">
                         <div className="flex items-center justify-between mb-4">
@@ -174,10 +179,12 @@ export default function AdminPayments() {
                             <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=random`} className="w-10 h-10 rounded-full object-cover border border-gray-700" alt="profile" />
                             <div>
                               <p className="font-bold text-gray-200">{p.profiles?.display_name}</p>
-                              <p className="text-xs text-gray-400">ตีไป: {p.games_played_today || 0} เกม</p>
+                              <p className="text-xs text-gray-400">
+                                {p.payment_status === 'pending_final' ? 'ชำระค่าลูกแบดรอบจบ' : 'ชำระค่าสนาม (รอบแรก)'}
+                              </p>
                             </div>
                           </div>
-                          <p className="text-lg text-yellow-500 font-black">{total} ฿</p>
+                          <p className="text-lg text-yellow-500 font-black">{amountToApprove} ฿</p>
                         </div>
                         
                         <div className="grid grid-cols-2 gap-2 mt-2">
@@ -191,7 +198,7 @@ export default function AdminPayments() {
                             </div>
                           )}
                           <button 
-                            onClick={() => handleApprove(p.id)}
+                            onClick={() => handleApprove(p.id, p.payment_status, p.accumulated_shuttle_fee || 0)}
                             className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition shadow-md active:scale-95"
                           >
                             ✅ ยืนยันยอด
@@ -204,7 +211,6 @@ export default function AdminPayments() {
               )}
             </div>
 
-            {/* โซนค้างชำระ (สียแดง/เทา) */}
             <div className="bg-gray-900/50 rounded-3xl p-5 md:p-6 border border-gray-800">
               <h2 className="text-lg font-bold text-gray-400 mb-4 flex items-center justify-between">
                 <span className="flex items-center gap-2"><span className="bg-gray-800 p-1.5 rounded-lg">🏃</span> ยังไม่จ่าย (รอกลับบ้าน)</span>
@@ -213,24 +219,25 @@ export default function AdminPayments() {
               <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
                 {unpaid.length === 0 ? <p className="text-gray-600 text-center py-4 text-sm">เคลียร์บิลหมดแล้ว</p> : (
                   unpaid.map(p => {
-                    const total = p.total_amount_due + (p.accumulated_shuttle_fee || 0);
+                    const oweAmount = p.payment_status === 'court_paid' ? (p.accumulated_shuttle_fee || 0) : (p.total_amount_due + (p.accumulated_shuttle_fee || 0));
                     return (
                       <div key={p.id} className="flex items-center justify-between p-3 bg-gray-950 rounded-xl border border-gray-800">
                         <div className="flex items-center gap-3">
                           <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name}&background=random`} className="w-8 h-8 rounded-full object-cover grayscale opacity-70" alt="profile" />
-                          <p className="font-medium text-gray-400 text-sm">{p.profiles?.display_name}</p>
+                          <p className="font-medium text-gray-400 text-sm">
+                            {p.profiles?.display_name} 
+                            {p.payment_status === 'court_paid' && <span className="ml-2 text-[10px] text-emerald-500/70">(ค้างแค่ค่าลูก)</span>}
+                          </p>
                         </div>
-                        <span className="text-rose-400 font-bold text-sm">{total} ฿</span>
+                        <span className="text-rose-400 font-bold text-sm">{oweAmount} ฿</span>
                       </div>
                     )
                   })
                 )}
               </div>
             </div>
-
           </div>
 
-          {/* 🌟 คอลัมน์ขวา: จ่ายแล้ว */}
           <div>
             <div className="bg-emerald-900/10 rounded-3xl p-5 md:p-6 shadow-sm border border-emerald-500/20 h-full">
               <h2 className="text-lg md:text-xl font-bold text-emerald-400 mb-4 flex items-center justify-between">
@@ -258,9 +265,7 @@ export default function AdminPayments() {
               </div>
             </div>
           </div>
-
         </div>
-
       </div>
     </div>
   );

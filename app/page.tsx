@@ -16,18 +16,16 @@ export default function Home() {
 
   const [outstandingDebt, setOutstandingDebt] = useState<any>(null);
   
-  // 🌟 State ใหม่: สำหรับเก็บเวลาและเช็คว่าอนุญาตให้ลงคิวได้หรือยัง
   const [canJoinQueue, setCanJoinQueue] = useState(false);
   const [timeUntilQueueMsg, setTimeUntilQueueMsg] = useState("");
 
   useEffect(() => {
     checkUserAndSession();
-    // ตั้ง Timer เช็คเวลาทุกๆ 1 นาที เผื่อเวลาเดินถึงจุดที่กดคิวได้แล้ว
     const timer = setInterval(() => {
       if (sessionToday) checkQueueTime(sessionToday.start_time);
     }, 60000);
     return () => clearInterval(timer);
-  }, [sessionToday]); // ผูก useEffect ตัวนี้กับ sessionToday
+  }, [sessionToday]); 
 
   const checkUserAndSession = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -43,15 +41,23 @@ export default function Home() {
 
       if (profile?.is_admin) setIsAdmin(true);
      
+      // 🌟 หนี้ค้าง (รวมถึงคนที่จ่ายค่าสนามก๊วนเก่าแล้ว แต่ลืมจ่ายค่าลูกแบดด้วย!)
       const { data: debts } = await supabase
         .from("session_participants")
         .select(`*, daily_sessions!inner(id, is_active)`)
         .eq("profile_id", user.id)
         .eq("daily_sessions.is_active", false) 
-        .in("payment_status", ["unpaid", "pending"]);
+        .in("payment_status", ["unpaid", "pending", "pending_final", "court_paid"]);
 
       if (debts && debts.length > 0) {
-        const realDebt = debts.find(d => (d.total_amount_due + (d.accumulated_shuttle_fee || 0)) > 0);
+        const realDebt = debts.find(d => {
+            const shuttle = d.accumulated_shuttle_fee || 0;
+            const court = d.total_amount_due || 0;
+            // ถ้าเป็น court_paid ถือว่าเป็นหนี้ก็ต่อเมื่อมีค่าลูกค้าง
+            if (d.payment_status === 'court_paid') return shuttle > 0;
+            return (court + shuttle) > 0;
+        });
+
         if (realDebt) {
           setOutstandingDebt(realDebt);
           setLoading(false);
@@ -76,27 +82,17 @@ export default function Home() {
         
         setPlayerCount(count || 0);
 
-        // 🌟 แก้ไขบั๊กรายชื่อไม่ออกตรงนี้: ปรับไวยากรณ์การดึง Profile ใหม่ให้แม่นยำขึ้น
         const { data: todayParticipants } = await supabase
           .from("session_participants")
-          .select(`
-            profile_id,
-            profiles (
-              id,
-              display_name
-            )
-          `)
+          .select(`profile_id, profiles (id, display_name)`)
           .eq("session_id", session.id)
           .neq("profile_id", user.id);
         
         if (todayParticipants) {
-          // ดึงข้อมูลชื่อออกมา และกรองค่าว่างทิ้ง
           const formattedProfiles = todayParticipants.map((p: any) => {
             if (Array.isArray(p.profiles)) return p.profiles[0];
             return p.profiles;
           }).filter(Boolean);
-          
-          // กรองข้อมูลซ้ำ (เผื่อมีคนกดยกเลิกแล้วลงใหม่)
           const uniqueProfiles = Array.from(new Map(formattedProfiles.map((item: any) => [item.id, item])).values());
           setAllProfiles(uniqueProfiles);
         } else {
@@ -116,17 +112,15 @@ export default function Home() {
     setLoading(false);
   };
 
-  // 🌟 ลอจิกตรวจสอบเวลาเปิดคิว (อนุญาตก่อนเวลา 15 นาที)
   const checkQueueTime = (startTimeIso: string | null) => {
     if (!startTimeIso) {
-      setCanJoinQueue(true); // ถ้าไม่ได้ตั้งเวลาไว้ ให้กดได้เลย
+      setCanJoinQueue(true); 
       setTimeUntilQueueMsg("");
       return;
     }
 
     const now = new Date();
     const startTime = new Date(startTimeIso);
-    // ลบไป 15 นาทีจากเวลาเริ่มตีจริง
     const queueOpenTime = new Date(startTime.getTime() - 15 * 60000); 
 
     if (now >= queueOpenTime) {
@@ -134,8 +128,6 @@ export default function Home() {
       setTimeUntilQueueMsg("");
     } else {
       setCanJoinQueue(false);
-      
-      // คำนวณเวลาที่เหลือเพื่อเอาไปโชว์ในปุ่ม
       const diffMs = queueOpenTime.getTime() - now.getTime();
       const diffMins = Math.ceil(diffMs / 60000);
       
@@ -180,14 +172,8 @@ export default function Home() {
       });
 
     if (!error) {
-      // 🌟 เช็คเงื่อนไข ถ้าเป็นก๊วนจ่ายก่อน ให้เด้งไปหน้าชำระเงินเลย
-      if (sessionToday.reservation_type === 'pay_first') {
-        alert("✅ จองโควต้าสำเร็จ! ระบบจะพาไปหน้าชำระเงินเพื่อยืนยันสิทธิ์ลงคิวนะครับ");
-        window.location.href = "/checkout"; 
-      } else {
-        alert("✅ จองโควต้าสำเร็จ! เมื่อเดินทางมาถึงคอร์ดแล้ว อย่าลืมมากดปุ่ม 'ลงคิวรอตี' นะครับ 🏸");
-        checkUserAndSession(); 
-      }
+      alert("✅ จองโควต้าสำเร็จ!");
+      checkUserAndSession(); 
     }
   };
 
@@ -240,7 +226,10 @@ export default function Home() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold">กำลังโหลดข้อมูล...</div>;
 
   if (outstandingDebt) {
-    const debtAmount = outstandingDebt.total_amount_due + (outstandingDebt.accumulated_shuttle_fee || 0);
+    const debtAmount = outstandingDebt.payment_status === 'court_paid' 
+      ? (outstandingDebt.accumulated_shuttle_fee || 0) 
+      : (outstandingDebt.total_amount_due + (outstandingDebt.accumulated_shuttle_fee || 0));
+      
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-sans p-4 relative">
         <div className="bg-white p-8 rounded-3xl shadow-xl border border-rose-200 text-center max-w-md w-full relative overflow-hidden">
@@ -252,7 +241,7 @@ export default function Home() {
           <div className="bg-rose-50 rounded-2xl p-4 border border-rose-100 mb-6">
             <p className="text-sm text-rose-500 font-bold mb-1">ยอดค้างชำระรวม</p>
             <p className="text-4xl font-black text-rose-600">{debtAmount} ฿</p>
-            {outstandingDebt.payment_status === 'pending' && (
+            {['pending', 'pending_final'].includes(outstandingDebt.payment_status) && (
               <p className="text-xs text-orange-500 font-bold mt-2 bg-orange-100 py-1 rounded-md">⏳ ส่งสลิปแล้ว แอดมินกำลังตรวจสอบ</p>
             )}
           </div>
@@ -275,15 +264,19 @@ export default function Home() {
 
   const isFull = sessionToday && playerCount >= sessionToday.max_players;
   const todayDateFormatted = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
-
-  const formatTime = (isoString: string) => {
-    if (!isoString) return "";
-    return new Date(isoString).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-  };
+  const formatTime = (isoString: string) => isoString ? new Date(isoString).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.' : "";
 
   const isActiveInQueue = myRecord && ['waiting', 'preparing', 'playing'].includes(myRecord.queue_status);
   const hasReserved = myRecord !== null;
   const hasPlayed = (myRecord?.games_played_today || 0) > 0;
+
+  // 🌟 ลอจิกสำคัญ: ตรวจสอบว่าต้องโชว์ปุ่ม "เช็คบิล" ไหม
+  // โชว์ถ้า: ยังไม่จ่ายเลย(unpaid), รอตรวจ(pending/pending_final) หรือ จ่ายแค่ค่าสนามแต่ค้างค่าลูก(court_paid)
+  const owesMoney = myRecord && myRecord.payment_status !== 'paid' && !(myRecord.payment_status === 'court_paid' && (myRecord.accumulated_shuttle_fee || 0) === 0);
+
+  // 🌟 ลอจิก: ถ้าเป็นระบบโอนก่อน (pay_first) บังคับว่าต้องสถานะ court_paid หรือ paid ถึงจะลงคิวตีได้
+  const isPayFirst = sessionToday?.reservation_type === 'pay_first';
+  const hasPaidCourtFee = myRecord?.payment_status === 'court_paid' || myRecord?.payment_status === 'paid' || myRecord?.payment_status === 'pending_final';
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-sans p-4 relative">
@@ -320,19 +313,6 @@ export default function Home() {
                       </p>
                     </div>
                   )}
-                  
-                  {/* 🌟 เพิ่มป้ายบอกกติกาการจ่ายเงิน */}
-                  <div className="mb-4">
-                    {sessionToday.reservation_type === 'pay_first' ? (
-                      <span className="bg-rose-100 text-rose-700 px-3 py-1 rounded-full text-xs font-bold border border-rose-200">
-                        ⚠️ ก๊วนนี้ต้องชำระเงินก่อนลงคิว
-                      </span>
-                    ) : (
-                      <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-200">
-                        ✅ ก๊วนนี้เหมาจ่ายทีหลัง (ก่อนกลับ)
-                      </span>
-                    )}
-                  </div>
                   
                   <p className="text-sm text-slate-600 font-medium mt-1">ค่าสนามเหมา {sessionToday.court_fee_flat} บ. | ค่าลูก {sessionToday.base_shuttle_fee} บ./เกม</p>
                   
@@ -391,61 +371,50 @@ export default function Home() {
                         </button>
                       ) : (
                         <div className="space-y-3">
-                          {/* 🌟 แยกเงื่อนไขชัดเจน: ต้องจ่ายเงินก่อน VS รอเวลาลงคิว */}
-                          {sessionToday.reservation_type === 'pay_first' && myRecord.payment_status !== 'paid' ? (
-                            <a 
-                              href="/checkout"
-                              className="flex flex-col items-center justify-center bg-rose-500 text-white px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-rose-600 transition-all shadow-md active:scale-95 border-b-4 border-rose-700"
-                            >
-                              <span>💸 ไปหน้าชำระเงินเพื่อปลดล็อคคิว</span>
-                              <span className="text-xs font-medium text-rose-100">(ก๊วนนี้ต้องชำระค่าสนามก่อนลงคิว)</span>
-                            </a>
-                          ) : (
-                            <button 
-                              onClick={handleReadyToPlay} 
-                              disabled={!canJoinQueue}
-                              className={`w-full px-6 py-4 rounded-xl font-bold text-lg transition-all shadow-md 
-                                ${!canJoinQueue 
-                                  ? "bg-slate-200 text-slate-400 cursor-not-allowed border-b-4 border-slate-300" 
-                                  : "bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 border-b-4 border-emerald-700"
-                                }`}
-                            >
-                              {!canJoinQueue ? (
-                                <span className="flex flex-col items-center gap-1">
-                                  <span>🔒 ยังไม่เปิดรับคิว</span>
-                                  <span className="text-xs font-medium text-slate-500">({timeUntilQueueMsg})</span>
-                                </span>
-                              ) : (
-                                "🏸 ถึงคอร์ดแล้ว! ลงคิวพร้อมตี"
-                              )}
-                            </button>
-                          )}
                           
-                          {/* 🌟 เช็คเงื่อนไข: ต้องยังไม่ได้เล่น และ ต้องไม่ใช่คนที่จ่ายเงินไปแล้วในระบบจ่ายก่อน */}
-                          {!hasPlayed && !(sessionToday.reservation_type === 'pay_first' && myRecord.payment_status === 'paid') && (
+                          {/* 🌟 ปุ่มเขียว: บล็อกการลงคิวหากเปิด Pay First แล้วยังไม่จ่ายค่าสนาม */}
+                          <button 
+                            onClick={handleReadyToPlay} 
+                            disabled={!canJoinQueue || (isPayFirst && !hasPaidCourtFee)}
+                            className={`w-full px-6 py-4 rounded-xl font-bold text-lg transition-all shadow-md 
+                              ${(!canJoinQueue || (isPayFirst && !hasPaidCourtFee)) 
+                                ? "bg-slate-200 text-slate-400 cursor-not-allowed border-b-4 border-slate-300" 
+                                : "bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 border-b-4 border-emerald-700"
+                              }`}
+                          >
+                            {!canJoinQueue ? (
+                              <span className="flex flex-col items-center gap-1">
+                                <span>🔒 ยังไม่เปิดรับคิว</span>
+                                <span className="text-xs font-medium text-slate-500">({timeUntilQueueMsg})</span>
+                              </span>
+                            ) : (isPayFirst && !hasPaidCourtFee) ? (
+                              <span className="flex flex-col items-center gap-1">
+                                <span className="text-rose-500">🔒 รอชำระค่าสนาม</span>
+                                <span className="text-[11px] font-medium text-slate-500">(กดปุ่มเช็คบิลด้านล่าง เพื่อโอนเงินเข้าคิว)</span>
+                              </span>
+                            ) : (
+                              "🏸 ถึงคอร์ดแล้ว! ลงคิวพร้อมตี"
+                            )}
+                          </button>
+                          
+                          {!hasPlayed && (
                             <button 
                               onClick={handleCancelReservation} 
-                              className="text-slate-400 text-sm font-semibold underline hover:text-rose-500 transition-all mt-4 w-full"
+                              className="text-slate-400 text-sm font-semibold underline hover:text-rose-500 transition-all mt-2 w-full"
                             >
                               ยกเลิกการจองโควต้าวันนี้
                             </button>
                           )}
-
-                          {/* 🌟 (แถมให้) ถ้าจ่ายเงินแล้ว แต่อยากยกเลิก ให้โชว์ข้อความแนะนำแทน เพื่อไม่ให้ผู้เล่นงงว่าปุ่มหายไปไหน */}
-                          {!hasPlayed && sessionToday.reservation_type === 'pay_first' && myRecord.payment_status === 'paid' && (
-                            <p className="text-slate-400 text-xs font-medium mt-4 w-full text-center">
-                              * ชำระเงินแล้ว หากต้องการยกเลิกคิว กรุณาติดต่อแอดมินครับ
-                            </p>
-                          )}
                         </div>
                       )}
 
-                      {myRecord.payment_status !== 'paid' && (
+                      {/* 🌟 ปุ่มเช็คบิล */}
+                      {owesMoney && (
                         <a 
                           href="/checkout" 
                           className="flex items-center justify-center bg-[#FFBA42] text-[#013C58] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#F5A201] hover:text-white transition-all shadow-sm mt-4 border border-[#F5A201]"
                         >
-                          💸 เช็คบิล / กลับบ้าน
+                          💸 เช็คบิล / ชำระเงิน
                         </a>
                       )}
                     </div>
@@ -464,15 +433,8 @@ export default function Home() {
                   </div>
                 </>
               ) : (
-                <div className="py-6 flex flex-col items-center">
-                  <p className="text-slate-500 font-medium mb-4">วันนี้แอดมินยังไม่เปิดก๊วนครับ 😴</p>
-                  
-                  {/* 🌟 ปลดล็อคแอดมินตรงนี้ */}
-                  {isAdmin && (
-                    <a href="/admin" className="flex items-center justify-center bg-[#013458] text-[#F5A201] px-6 py-4 rounded-xl w-full font-bold text-lg hover:bg-[#00537A] transition-all shadow-sm active:scale-95 border border-[#FFBA42]/30 mt-4">
-                      👑 เข้าสู่หน้าแอดมิน (เพื่อเปิดก๊วน)
-                    </a>
-                  )}
+                <div className="py-4">
+                  <p className="text-slate-500 font-medium">วันนี้แอดมินยังไม่เปิดก๊วนครับ 😴</p>
                 </div>
               )}
             </div>
