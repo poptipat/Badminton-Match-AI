@@ -1,18 +1,23 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/utils/supabase";
+// 🌟 นำเข้า Type ที่เราเพิ่งสร้าง
+import { DailySession, ParticipantRecord, DashboardData } from "@/types";
 
 export function useHomeDashboard() {
-  const [user, setUser] = useState<any>(null);
-  const [sessionToday, setSessionToday] = useState<any>(null);
+  const [user, setUser] = useState<any>(null); // ส่วนของ Auth ปล่อยไว้ก่อนได้
+  
+  // 🌟 บังคับ Type แทนการใช้ any
+  const [sessionToday, setSessionToday] = useState<DailySession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [playerCount, setPlayerCount] = useState(0); 
-  const [allProfiles, setAllProfiles] = useState<any[]>([]); 
+  const [playerCount, setPlayerCount] = useState<number>(0); 
+  const [allProfiles, setAllProfiles] = useState<{ id: string; display_name: string }[]>([]); 
   const [selectedPartner, setSelectedPartner] = useState<string>(""); 
-  const [myRecord, setMyRecord] = useState<any>(null); 
-  const [isAdmin, setIsAdmin] = useState(false); 
-  const [outstandingDebt, setOutstandingDebt] = useState<any>(null);
-  const [canJoinQueue, setCanJoinQueue] = useState(false);
-  const [timeUntilQueueMsg, setTimeUntilQueueMsg] = useState("");
+  const [myRecord, setMyRecord] = useState<ParticipantRecord | null>(null); 
+  const [isAdmin, setIsAdmin] = useState<boolean>(false); 
+  const [outstandingDebt, setOutstandingDebt] = useState<ParticipantRecord | null>(null);
+  
+  const [canJoinQueue, setCanJoinQueue] = useState<boolean>(false);
+  const [timeUntilQueueMsg, setTimeUntilQueueMsg] = useState<string>("");
 
   // ก้อนที่ 1: ดึงข้อมูลครั้งแรกเมื่อเปิดเว็บ และตั้งเวลาเช็คคิว
   useEffect(() => {
@@ -100,7 +105,7 @@ export function useHomeDashboard() {
       return;
     }
 
-    const data = rawData as any;
+    const data = rawData as DashboardData;
 
     if (data.error === 'profile_not_found') {
       window.location.href = "/setup-profile";
@@ -176,7 +181,7 @@ export function useHomeDashboard() {
       return;
     }
 
-    const data = rawData as any;
+    const data = rawData as { success: boolean, message?: string, reservation_type?: string };
     if (data && data.success === false) {
       alert(data.message); 
       checkUserAndSession(); 

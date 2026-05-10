@@ -19,65 +19,32 @@ export default function AdminReports() {
   }, []);
 
   const fetchReports = async () => {
-    // 1. ดึงข้อมูลก๊วน 30 วันล่าสุด
-    const { data: sessions } = await supabase
-      .from("daily_sessions")
+    // 🚀 ยิงไปดึงข้อมูลจาก View ที่บวกเลขมาให้เสร็จแล้ว!
+    const { data: reports } = await supabase
+      .from("monthly_revenue_report")
       .select("*")
-      .order("created_at", { ascending: false })
       .limit(30);
 
-    if (sessions && sessions.length > 0) {
-      const sessionIds = sessions.map(s => s.id);
-
-      // 2. ดึงข้อมูลผู้เล่นทั้งหมดที่อยู่ใน 30 ก๊วนนี้
-      const { data: participants } = await supabase
-        .from("session_participants")
-        .select("*")
-        .in("session_id", sessionIds);
-
+    if (reports && reports.length > 0) {
       let overallRevenue = 0;
       let overallUnpaid = 0;
       let overallGames = 0;
       let overallPlayers = 0;
 
-      // 3. ประมวลผลข้อมูลแยกตามวัน
-      const processedData = sessions.map(session => {
-        const sessionParts = participants?.filter(p => p.session_id === session.id) || [];
-        
-        let dailyRevenue = 0;
-        let dailyUnpaid = 0;
-        let dailyGames = 0;
-        let activePlayers = 0; // นับเฉพาะคนที่ลงสนามหรือมียอดต้องจ่าย
-
-        sessionParts.forEach(p => {
-          const totalFee = (p.total_amount_due || 0) + (p.accumulated_shuttle_fee || 0);
-          
-          if (totalFee > 0) {
-            activePlayers += 1;
-            dailyGames += (p.games_played_today || 0);
-
-            if (p.payment_status === 'paid') {
-              dailyRevenue += totalFee;
-            } else {
-              dailyUnpaid += totalFee;
-            }
-          }
-        });
-
-        // บวกเข้ายอดรวมใหญ่
-        overallRevenue += dailyRevenue;
-        overallUnpaid += dailyUnpaid;
-        overallGames += dailyGames;
-        overallPlayers += activePlayers;
+      const processedData = reports.map((report: any) => {
+        overallRevenue += report.revenue;
+        overallUnpaid += report.unpaid;
+        overallGames += report.games;
+        overallPlayers += report.players;
 
         return {
-          id: session.id,
-          date: new Date(session.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }),
-          isActive: session.is_active,
-          revenue: dailyRevenue,
-          unpaid: dailyUnpaid,
-          games: dailyGames,
-          players: activePlayers
+          id: report.session_id,
+          date: new Date(report.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }),
+          isActive: report.is_active,
+          revenue: report.revenue,
+          unpaid: report.unpaid,
+          games: report.games,
+          players: report.players
         };
       });
 
@@ -86,7 +53,7 @@ export default function AdminReports() {
         totalRevenue: overallRevenue,
         totalUnpaid: overallUnpaid,
         totalGames: overallGames,
-        totalSessions: sessions.length,
+        totalSessions: reports.length,
         totalPlayers: overallPlayers
       });
     }

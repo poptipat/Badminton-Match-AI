@@ -18,7 +18,6 @@ export default function CheckoutPage() {
   const fetchCheckoutData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // ดึงบิลที่สถานะยังไม่ paid 100%
       const { data: unpaidBill } = await supabase
         .from("session_participants")
         .select("*, profiles!profile_id(display_name)")
@@ -29,7 +28,6 @@ export default function CheckoutPage() {
         .single();
 
       if (unpaidBill) {
-        // ถ้าเป็น court_paid (จ่ายค่าสนามแล้ว) แต่ยังไม่ได้ตีลูกเลย ก็ยังไม่ต้องโชว์บิล
         if (unpaidBill.payment_status === 'court_paid' && (unpaidBill.accumulated_shuttle_fee || 0) === 0) {
            setParticipant(null);
         } else {
@@ -53,37 +51,37 @@ export default function CheckoutPage() {
 
   const handleUploadSlip = async () => {
     if (!file) return alert("กรุณาแนบรูปสลิปก่อนครับ!");
+    if (uploading) return; // 🌟 ป้องกันการกดปุ่มเบิ้ลรัวๆ (Double Submit Prevention)
+    
     setUploading(true);
 
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${participant.id}-${Math.random()}.${fileExt}`;
-    const filePath = `${fileName}`;
+    try {
+      const fileExt = file.name.split('.').pop();
+      // 🌟 ใช้ Date.now() แทน Math.random() เพื่อป้องกันชื่อไฟล์ซ้ำกันในอนาคตชัวร์ๆ
+      const fileName = `${participant.id}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
 
-    const { error: uploadError } = await supabase.storage.from('slips').upload(filePath, file);
+      const { error: uploadError } = await supabase.storage.from('slips').upload(filePath, file);
 
-    if (uploadError) {
-      alert("อัปโหลดสลิปไม่สำเร็จ กรุณาลองใหม่");
-      setUploading(false);
-      return;
+      if (uploadError) throw new Error("อัปโหลดสลิปไม่สำเร็จ กรุณาลองใหม่");
+
+      const { data: publicUrlData } = supabase.storage.from('slips').getPublicUrl(filePath);
+
+      // 🚀 ยิง RPC ให้ Database เป็นคนตัดสินใจเรื่องสถานะ ป้องกัน State เพี้ยนเวลาแอดมินแก้ข้อมูลชนกัน
+      const { error: dbError } = await supabase.rpc('submit_payment_slip', {
+        p_participant_id: participant.id,
+        p_slip_url: publicUrlData.publicUrl
+      });
+
+      if (dbError) throw new Error("บันทึกข้อมูลไม่สำเร็จ กรุณาแจ้งแอดมิน");
+
+      alert("✅ ส่งสลิปเรียบร้อย! รอแอดมินตรวจสอบครับ");
+      fetchCheckoutData();
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setUploading(false); // ปลดล็อกปุ่มเสมอไม่ว่าจะสำเร็จหรือพัง
     }
-
-    const { data: publicUrlData } = supabase.storage.from('slips').getPublicUrl(filePath);
-
-    // 🌟 ถ้าเคยจ่ายค่าสนามแล้ว (`court_paid`) ให้ปรับเป็นรอตรวจค่าลูก (`pending_final`)
-    const nextStatus = participant.payment_status === 'court_paid' ? 'pending_final' : 'pending';
-
-    await supabase
-      .from("session_participants")
-      .update({
-        payment_status: nextStatus, 
-        payment_slip_url: publicUrlData.publicUrl,
-        checkout_time: new Date().toISOString()
-      })
-      .eq("id", participant.id);
-
-    alert("✅ ส่งสลิปเรียบร้อย! รอแอดมินตรวจสอบครับ");
-    fetchCheckoutData();
-    setUploading(false);
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-[#013C58] font-bold text-lg">กำลังดึงข้อมูลบิล...</div>;
@@ -95,7 +93,6 @@ export default function CheckoutPage() {
     </div>
   );
 
-  // 🌟 ลอจิกแยกค่าสนาม (ถ้าเป็น court_paid หรือ pending_final แปลว่าค่าสนามจ่ายแล้ว ให้เหลือ 0)
   const isCourtPaid = participant.payment_status === 'court_paid' || participant.payment_status === 'pending_final';
   const courtFee = isCourtPaid ? 0 : (participant.total_amount_due || 0); 
   const totalShuttleFee = participant.accumulated_shuttle_fee || 0; 

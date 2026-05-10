@@ -5,7 +5,10 @@ import Link from "next/link";
 
 export default function LeaderboardPage() {
   const [players, setPlayers] = useState<any[]>([]);
-  const [dailyStats, setDailyStats] = useState<any[]>([]);
+  // 🌟 เลิกเก็บ dailyStats ก้อนยักษ์ แล้วเก็บแยกเฉพาะ Top 10 ที่เรียงมาแล้ว
+  const [topIronMen, setTopIronMen] = useState<any[]>([]);
+  const [topWinners, setTopWinners] = useState<any[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'elo' | 'ironman' | 'wins'>('elo');
 
@@ -16,21 +19,37 @@ export default function LeaderboardPage() {
   const fetchAllData = async () => {
     setLoading(true);
     
-    // 1. ดึงข้อมูล ELO ทั้งหมด
+    // 1. ดึงข้อมูล ELO (🌟 เพิ่ม .limit() ป้องกันกรณีในอนาคตมีคน 1,000 คน มือถือจะเรนเดอร์ไม่ไหว ดึงมาแค่ Top 150 พอ)
     const { data: eloData } = await supabase
       .from("profiles")
       .select("id, display_name, avatar_url, elo_rating")
-      .order("elo_rating", { ascending: false }); 
+      .order("elo_rating", { ascending: false })
+      .limit(150); 
+      
     if (eloData) setPlayers(eloData);
 
     // 2. ดึงข้อมูลสถิติของ "วันนี้"
     const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).single();
+    
     if (session) {
-      const { data: statsData } = await supabase
-        .from("session_participants")
-        .select("games_played_today, wins, profiles!profile_id(display_name, avatar_url)")
-        .eq("session_id", session.id);
-      if (statsData) setDailyStats(statsData);
+      // 🚀 ท่าไม้ตายมืออาชีพ: ให้ Database เรียงลำดับและตัด Top 10 ให้เลย และใช้ Promise.all ดึง 2 ตารางพร้อมกันในเสี้ยววินาที!
+      const [ { data: ironmenData }, { data: winnersData } ] = await Promise.all([
+        supabase
+          .from("session_participants")
+          .select("games_played_today, profiles!profile_id(display_name, avatar_url)")
+          .eq("session_id", session.id)
+          .order("games_played_today", { ascending: false })
+          .limit(10), // เอาแค่ 10 คนแรก!
+        supabase
+          .from("session_participants")
+          .select("wins, profiles!profile_id(display_name, avatar_url)")
+          .eq("session_id", session.id)
+          .order("wins", { ascending: false })
+          .limit(10) // เอาแค่ 10 คนแรก!
+      ]);
+
+      if (ironmenData) setTopIronMen(ironmenData);
+      if (winnersData) setTopWinners(winnersData);
     }
     
     setLoading(false);
@@ -45,10 +64,7 @@ export default function LeaderboardPage() {
   const tierN = players.filter(p => p.elo_rating >= 1000 && p.elo_rating < 1200);
   const tierBG = players.filter(p => p.elo_rating < 1000);
 
-  // จัดอันดับคนเหล็ก (จำนวนเกม) และ เทพชัยชนะ (จำนวนชนะ) ของวันนี้
-  const topIronMen = [...dailyStats].sort((a, b) => b.games_played_today - a.games_played_today).slice(0, 10);
-  const topWinners = [...dailyStats].sort((a, b) => b.wins - a.wins).slice(0, 10);
-
+ 
   // Component ย่อยสำหรับเรนเดอร์กลุ่ม ELO
   const RenderTier = ({ title, data, colorClass, borderClass }: any) => {
     if (data.length === 0) return null;
