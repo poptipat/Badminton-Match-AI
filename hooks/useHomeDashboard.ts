@@ -166,22 +166,22 @@ export function useHomeDashboard() {
 
   const handleReserveSlot = async () => {
     if (!sessionToday || !user) return;
+    
+    // 🚀 ยิงไปแค่ 3 ตัวพอ ให้ Database คิดเองว่ากติกาเป็นยังไง
     const { data: rawData, error } = await supabase.rpc('reserve_slot', {
       p_session_id: sessionToday.id,
       p_profile_id: user.id,
-      p_fee: sessionToday.court_fee_flat,
-      preferred_partner_id: null,
-      payment_status: "unpaid",
-      queue_status: "resting", 
-      total_amount_due: sessionToday.court_fee_flat 
-    } as any);
+      p_fee: sessionToday.court_fee_flat
+    });
 
     if (error) {
       alert("เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูลครับ");
+      console.error(error); // เผื่อไว้ดูบั๊กใน Console
       return;
     }
 
     const data = rawData as { success: boolean, message?: string, reservation_type?: string };
+    
     if (data && data.success === false) {
       alert(data.message); 
       checkUserAndSession(); 
@@ -191,6 +191,8 @@ export function useHomeDashboard() {
     if (data && data.success === true) {
       if (data.reservation_type === 'pay_first') {
         alert("✅ จองโควต้าสำเร็จ! ระบบจะพาไปหน้าชำระเงินเพื่อยืนยันสิทธิ์ลงคิวนะครับ");
+        // 🌟 รอมันอัปเดต State ให้ชัวร์ก่อน ค่อยเด้งไปหน้าชำระเงิน
+        await checkUserAndSession(); 
         window.location.href = "/checkout"; 
       } else {
         alert("✅ จองโควต้าสำเร็จ! เมื่อเดินทางมาถึงคอร์ดแล้ว อย่าลืมมากดปุ่ม 'ลงคิวรอตี' นะครับ 🏸");
