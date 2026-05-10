@@ -50,7 +50,7 @@ export default function Home() {
     );
   }
 
-  const isFull = sessionToday && playerCount >= sessionToday.max_players;
+  const isFull = sessionToday ? playerCount >= sessionToday.max_players : false;
   const todayDateFormatted = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   const formatTime = (isoString: string) => isoString ? new Date(isoString).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.' : "";
 

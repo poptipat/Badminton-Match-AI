@@ -14,6 +14,7 @@ export function useHomeDashboard() {
   const [canJoinQueue, setCanJoinQueue] = useState(false);
   const [timeUntilQueueMsg, setTimeUntilQueueMsg] = useState("");
 
+  // ก้อนที่ 1: ดึงข้อมูลครั้งแรกเมื่อเปิดเว็บ และตั้งเวลาเช็คคิว
   useEffect(() => {
     checkUserAndSession();
     const timer = setInterval(() => {
@@ -25,6 +26,34 @@ export function useHomeDashboard() {
     }, 60000);
     return () => clearInterval(timer);
   }, []); 
+
+  // ก้อนที่ 2: ดักฟังการเปลี่ยนแปลงแบบ Realtime
+  useEffect(() => {
+    // ถ้ายังไม่มี Session เปิดอยู่ ไม่ต้องเปลือง Resource ไปดักฟัง
+    if (!sessionToday || !sessionToday.id) return;
+
+    const channel = supabase
+      .channel('session_participants_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // จับทุกการกระทำ (Insert, Update, Delete)
+          schema: 'public',
+          table: 'session_participants',
+          filter: `session_id=eq.${sessionToday.id}` // ฟังเฉพาะข้อมูลของก๊วนวันนี้เท่านั้น
+        },
+        () => {
+          // ทันทีที่มีคนกดจอง/ยกเลิก ให้เบราว์เซอร์ของทุกคนดึงข้อมูล Dashboard ใหม่แบบเงียบๆ
+          checkUserAndSession();
+        }
+      )
+      .subscribe();
+
+    // Cleanup function ถอดสายเมื่อผู้ใช้ปิดหน้าเว็บ ป้องกัน Memory Leak
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [sessionToday?.id]); 
 
   const checkQueueTime = (startTimeIso: string | null) => {
     if (!startTimeIso) {
