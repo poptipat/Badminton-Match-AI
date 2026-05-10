@@ -97,44 +97,24 @@ export default function AdminPayments() {
     setLoading(false);
   };
 
-  // 🌟 ลอจิกแก้บั๊ก: อิงจาก "ประเภทของก๊วน" เท่านั้น ไม่อิงจากยอดเงินลูกแบด
   const handleApprove = async (id: string, currentStatus: string, sessionId: string) => {
     const confirmApprove = confirm("คุณตรวจสอบยอดเงินในบัญชีว่าเข้าจริงแล้ว ใช่หรือไม่?");
     if (!confirmApprove) return;
     
     setLoading(true);
 
-    // ดึงประเภทการตั้งค่าของก๊วนนี้มาเช็กก่อน
-    const { data: sessionData } = await supabase
-      .from('daily_sessions')
-      .select('reservation_type')
-      .eq('id', sessionId)
-      .single();
+    // 🚀 ยิง RPC นัดเดียวจบ ไม่ต้อง Select ก่อน Update แล้ว
+    const { error } = await supabase.rpc('approve_payment', {
+      p_participant_id: id,
+      p_session_id: sessionId
+    });
 
-    let nextStatus = 'paid';
-    
-    // 1. ถ้าก๊วนนี้เป็นระบบโอนก่อน (Pay First)
-    if (sessionData?.reservation_type === 'pay_first') {
-        if (currentStatus === 'pending') {
-            // ถ้าส่งสลิปใบแรกมา (ค่าสนาม) ให้ล็อกเป็น court_paid เสมอ
-            nextStatus = 'court_paid';
-        } else if (currentStatus === 'pending_final') {
-            // ถ้าส่งสลิปรอบจบมา (ค่าลูก) ค่อยปรับเป็น paid จบเกม
-            nextStatus = 'paid';
-        }
-    } 
-    // 2. ถ้าก๊วนนี้เป็นระบบจ่ายทีหลัง (Pay Later)
-    else {
-        // จ่ายรอบเดียวจบ ให้เป็น paid ได้เลย
-        nextStatus = 'paid';
+    if (error) {
+      console.error(error);
+      alert("เกิดข้อผิดพลาดในการยืนยันยอด กรุณาลองใหม่");
     }
-
-    await supabase
-      .from("session_participants")
-      .update({ payment_status: nextStatus })
-      .eq('id', id);
       
-    fetchPayments();
+    fetchPayments(); // รีเฟรชหน้าจอ (loading จะถูกปิดในนี้)
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-yellow-500 font-bold text-xl">กำลังโหลดระบบการเงิน...</div>;

@@ -208,155 +208,119 @@ export default function AdminDashboard() {
     setShowResultModal(false); 
     setLoading(true);
 
-    // 1. แยกทีมและหา ELO เฉลี่ยของแต่ละทีม
     const tA = matchToFinish.filter(p => p.team === 'A');
     const tB = matchToFinish.filter(p => p.team === 'B');
-    
-    // ถ้าไม่มีข้อมูลทีม (เกิดจากการใช้ AI จัดแบบไม่มีคอลัมน์ team) ให้ใช้ getBestPairing ย้อนหลัง
     const pairing = (tA.length > 0 && tB.length > 0) ? { teamA: tA, teamB: tB } : getBestPairing(matchToFinish);
     const finalTeamA = pairing?.teamA || [];
     const finalTeamB = pairing?.teamB || [];
 
     const getAvgElo = (team: any[]) => {
       if (team.length === 0) return 1200;
-      const sum = team.reduce((acc, p) => acc + (p.profiles?.elo_rating || 1200), 0);
-      return sum / team.length;
+      return team.reduce((acc, p) => acc + (p.profiles?.elo_rating || 1200), 0) / team.length;
     };
 
-    const teamAAvgElo = getAvgElo(finalTeamA);
-    const teamBAvgElo = getAvgElo(finalTeamB);
+    const expectedA = 1 / (1 + Math.pow(10, (getAvgElo(finalTeamB) - getAvgElo(finalTeamA)) / 400));
+    const expectedB = 1 / (1 + Math.pow(10, (getAvgElo(finalTeamA) - getAvgElo(finalTeamB)) / 400));
 
-    // 2. คำนวณโอกาสชนะ (Expected Score) ตามสูตร ELO
-    const expectedA = 1 / (1 + Math.pow(10, (teamBAvgElo - teamAAvgElo) / 400));
-    const expectedB = 1 / (1 + Math.pow(10, (teamAAvgElo - teamBAvgElo) / 400));
-
-    // 3. กำหนดค่าผลลัพธ์ (S)
     const scoreA = resultType === 'draw' ? 0.5 : (resultType === 'teamA' ? 1 : 0);
     const scoreB = resultType === 'draw' ? 0.5 : (resultType === 'teamB' ? 1 : 0);
 
-    // 4. คำนวณแต้มดิบที่จะบวก/ลบ (K-Factor = 32)
-    const K = 32;
-    const deltaA = Math.round(K * (scoreA - expectedA));
-    const deltaB = Math.round(K * (scoreB - expectedB));
+    const deltaA = Math.round(32 * (scoreA - expectedA));
+    const deltaB = Math.round(32 * (scoreB - expectedB));
 
-    // 5. บันทึกข้อมูลลง Database
-    for (const p of matchToFinish) {
-      const isTeamA = finalTeamA.some(member => member.id === p.id);
+    // 🌟 จัดเตรียมข้อมูล 4 คนแบบมัดรวม (เลิกยิง Database ทีละคน)
+    const playerUpdates = matchToFinish.map(p => {
+      const isTeamA = finalTeamA.some((member: any) => member.id === p.id);
       const isWinner = (isTeamA && resultType === 'teamA') || (!isTeamA && resultType === 'teamB');
       const isDraw = resultType === 'draw';
-      
       const eloChange = isTeamA ? deltaA : deltaB;
-      const currentElo = p.profiles?.elo_rating || 1200;
-      const newElo = Math.max(0, currentElo + eloChange); // ป้องกัน ELO ติดลบ
 
-      // อัปเดตคิวและสถิติ
-      await supabase.from("session_participants").update({
-          queue_status: 'waiting',
-          court_number: null,
-          team: null,
-          games_played_today: p.games_played_today + 1,
-          accumulated_shuttle_fee: (p.accumulated_shuttle_fee || 0) + 27,
-          join_time: new Date().toISOString(),
-          wins: (p.wins || 0) + (!isDraw && isWinner ? 1 : 0),
-          losses: (p.losses || 0) + (!isDraw && !isWinner ? 1 : 0),
-          draws: (p.draws || 0) + (isDraw ? 1 : 0)
-      }).eq('id', p.id);
-
-      // อัปเดต ELO โปรไฟล์
-      if (p.profile_id) {
-        await supabase.from("profiles").update({ elo_rating: newElo }).eq('id', p.profile_id);
-      }
-    }
-
-    // 🌟 ดึง session_id จากผู้เล่นคนแรกในคอร์ดเลย
-    const currentSessionId = matchToFinish[0]?.session_id;
-
-    // 🌟 บันทึกประวัติการแข่งลง match_history ก่อนแจ้งเตือน
-    await supabase.from("match_history").insert({
-        session_id: currentSessionId,
-        team_a: finalTeamA.map((p: any) => ({ 
-            id: p.id, 
-            profile_id: p.profile_id, 
-            display_name: p.profiles?.display_name 
-        })),
-        team_b: finalTeamB.map((p: any) => ({ 
-            id: p.id, 
-            profile_id: p.profile_id, 
-            display_name: p.profiles?.display_name 
-        })),
-        winner: resultType,
-        delta_a: deltaA,
-        delta_b: deltaB
+      return {
+        id: p.id,
+        profile_id: p.profile_id,
+        new_elo: Math.max(0, (p.profiles?.elo_rating || 1200) + eloChange),
+        games_played: p.games_played_today + 1,
+        shuttle_fee: (p.accumulated_shuttle_fee || 0) + 27,
+        wins: (p.wins || 0) + (!isDraw && isWinner ? 1 : 0),
+        losses: (p.losses || 0) + (!isDraw && !isWinner ? 1 : 0),
+        draws: (p.draws || 0) + (isDraw ? 1 : 0)
+      };
     });
 
-    // แจ้งเตือนแบบโปรๆ บอกเลยว่าใครได้แต้มเท่าไหร่
-    const alertMsg = resultType === 'draw' 
-      ? `⚖️ เสมอกัน!\nทีม 1 เปลี่ยน ${deltaA > 0 ? '+'+deltaA : deltaA} แต้ม\nทีม 2 เปลี่ยน ${deltaB > 0 ? '+'+deltaB : deltaB} แต้ม`
-      : `🏆 ทีม ${resultType === 'teamA' ? '1 (ฟ้า)' : '2 (ส้ม)'} ชนะ!\nทีม 1 ได้ ${deltaA > 0 ? '+'+deltaA : deltaA} แต้ม\nทีม 2 ได้ ${deltaB > 0 ? '+'+deltaB : deltaB} แต้ม`;
-    
-      alert(alertMsg);
-      fetchData(); // อัปเดตกระดาน
-      fetchMatchHistory(currentSessionId); // 🌟 เติมบรรทัดนี้ เพื่อให้อัปเดตตารางประวัติด้านล่างทันที
-      setLoading(false);
+    const currentSessionId = matchToFinish[0]?.session_id;
+    const historyRecord = {
+      team_a: finalTeamA.map((p: any) => ({ id: p.id, profile_id: p.profile_id, display_name: p.profiles?.display_name })),
+      team_b: finalTeamB.map((p: any) => ({ id: p.id, profile_id: p.profile_id, display_name: p.profiles?.display_name })),
+      winner: resultType,
+      delta_a: deltaA,
+      delta_b: deltaB
     };
+
+    // 🚀 ยิง RPC ครั้งเดียวจบ!
+    const { error } = await supabase.rpc('submit_match_result', {
+      p_session_id: currentSessionId,
+      p_history_record: historyRecord,
+      p_player_updates: playerUpdates
+    });
+
+    if (error) {
+      console.error(error); alert("เกิดข้อผิดพลาดในการบันทึกผล");
+    } else {
+      const alertMsg = resultType === 'draw' 
+        ? `⚖️ เสมอกัน!\nทีม 1 เปลี่ยน ${deltaA > 0 ? '+'+deltaA : deltaA} แต้ม\nทีม 2 เปลี่ยน ${deltaB > 0 ? '+'+deltaB : deltaB} แต้ม`
+        : `🏆 ทีม ${resultType === 'teamA' ? '1 (ฟ้า)' : '2 (ส้ม)'} ชนะ!\nทีม 1 ได้ ${deltaA > 0 ? '+'+deltaA : deltaA} แต้ม\nทีม 2 ได้ ${deltaB > 0 ? '+'+deltaB : deltaB} แต้ม`;
+      alert(alertMsg);
+      fetchData(); 
+      fetchMatchHistory(currentSessionId);
+    }
+    setLoading(false);
+  };
 
   const handleUndoMatch = async (match: any) => {
     if (!confirm("⚠️ ต้องการยกเลิกผลการแข่งนี้และคืนคะแนน ELO ใช่หรือไม่?\n(สถิติจำนวนเกมและค่าลูกจะถูกหักออกด้วย)")) return;
-    
     setLoading(true);
 
-    // 1. คืนค่าให้ทีม A
-    for (const p of match.team_a) {
-      const isWinner = match.winner === 'teamA';
-      const isDraw = match.winner === 'draw';
-      
-      // ดึงค่าปัจจุบันมาหักลบ
-      const { data: currentParticipant } = await supabase.from("session_participants").select("*").eq('id', p.id).single();
-      const { data: currentProfile } = await supabase.from("profiles").select("elo_rating").eq('id', p.profile_id).single();
+    const allPlayers = [...match.team_a, ...match.team_b];
+    const playerIds = allPlayers.map((p: any) => p.id);
 
-      if (currentParticipant && currentProfile) {
-        await supabase.from("session_participants").update({
-          games_played_today: Math.max(0, currentParticipant.games_played_today - 1),
-          accumulated_shuttle_fee: Math.max(0, (currentParticipant.accumulated_shuttle_fee || 0) - 27),
-          wins: Math.max(0, currentParticipant.wins - (!isDraw && isWinner ? 1 : 0)),
-          losses: Math.max(0, currentParticipant.losses - (!isDraw && !isWinner ? 1 : 0)),
-          draws: Math.max(0, currentParticipant.draws - (isDraw ? 1 : 0))
-        }).eq('id', p.id);
+    // 🌟 ดึงข้อมูลล่าสุดของทั้ง 4 คนรวดเดียวจบ (เลิกวนลูปดึงข้อมูล)
+    const { data: currentData } = await supabase.from("session_participants").select("*, profiles(elo_rating)").in('id', playerIds);
 
-        await supabase.from("profiles").update({
-          elo_rating: currentProfile.elo_rating - match.delta_a
-        }).eq('id', p.profile_id);
-      }
+    if (!currentData) {
+       alert("ไม่พบข้อมูลผู้เล่น"); setLoading(false); return;
     }
 
-    // 2. คืนค่าให้ทีม B (ทำเหมือนทีม A แต่ใช้ delta_b)
-    for (const p of match.team_b) {
-      const isWinner = match.winner === 'teamB';
+    const playerUpdates = currentData.map(p => {
+      const isTeamA = match.team_a.some((member: any) => member.id === p.id);
+      const isWinner = (isTeamA && match.winner === 'teamA') || (!isTeamA && match.winner === 'teamB');
       const isDraw = match.winner === 'draw';
-      const { data: currentParticipant } = await supabase.from("session_participants").select("*").eq('id', p.id).single();
-      const { data: currentProfile } = await supabase.from("profiles").select("elo_rating").eq('id', p.profile_id).single();
+      const eloDelta = isTeamA ? match.delta_a : match.delta_b;
 
-      if (currentParticipant && currentProfile) {
-        await supabase.from("session_participants").update({
-          games_played_today: Math.max(0, currentParticipant.games_played_today - 1),
-          accumulated_shuttle_fee: Math.max(0, (currentParticipant.accumulated_shuttle_fee || 0) - 27),
-          wins: Math.max(0, currentParticipant.wins - (!isDraw && isWinner ? 1 : 0)),
-          losses: Math.max(0, currentParticipant.losses - (!isDraw && !isWinner ? 1 : 0)),
-          draws: Math.max(0, currentParticipant.draws - (isDraw ? 1 : 0))
-        }).eq('id', p.id);
+      return {
+        id: p.id,
+        profile_id: p.profile_id,
+        new_elo: (p.profiles?.elo_rating || 1200) - eloDelta, // หัก ELO คืน
+        games_played: Math.max(0, p.games_played_today - 1),
+        shuttle_fee: Math.max(0, (p.accumulated_shuttle_fee || 0) - 27),
+        wins: Math.max(0, p.wins - (!isDraw && isWinner ? 1 : 0)),
+        losses: Math.max(0, p.losses - (!isDraw && !isWinner ? 1 : 0)),
+        draws: Math.max(0, p.draws - (isDraw ? 1 : 0))
+      };
+    });
 
-        await supabase.from("profiles").update({
-          elo_rating: currentProfile.elo_rating - match.delta_b
-        }).eq('id', p.profile_id);
-      }
+    // 🚀 ยิง RPC ครั้งเดียว เพื่อแก้สถิติคนทั้งหมดและลบประวัติ
+    const { error } = await supabase.rpc('undo_match_result', {
+      p_match_id: match.id,
+      p_player_updates: playerUpdates
+    });
+
+    if (error) {
+      console.error(error); alert("เกิดข้อผิดพลาดในการดึงคะแนนคืน");
+    } else {
+      alert("✅ ดึงคะแนนคืนเรียบร้อย!");
+      fetchData(); 
+      fetchMatchHistory(match.session_id);
     }
-
-    // 3. ลบประวัตินี้ทิ้ง
-    await supabase.from("match_history").delete().eq('id', match.id);
-    
-    alert("✅ ดึงคะแนนคืนเรียบร้อย!");
-    fetchData(); // อัปเดตกระดาน
-    fetchMatchHistory(match.session_id); // 🌟 เติมบรรทัดนี้ เพื่อให้กล่องประวัติที่เพิ่งลบ หายวับไปทันที
     setLoading(false);
   };
 
