@@ -33,8 +33,7 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      // 1. ดึงก๊วนล่าสุดที่เปิดอยู่
-      const { data: session } = await supabase
+      const { data: session, error: sessionErr } = await supabase
         .from("daily_sessions")
         .select("id")
         .eq("is_active", true)
@@ -42,28 +41,33 @@ export default function AdminDashboard() {
         .limit(1)
         .single();
 
+      if (sessionErr && sessionErr.code !== 'PGRST116') {
+        alert("🚨 บั๊กหาก๊วน: " + sessionErr.message);
+        return;
+      }
+
       if (session) {
         fetchMatchHistory(session.id);
         
-        // 🌟 2. แก้จุดตาย! ใช้ profiles(*) เพื่อป้องกันปัญหา Syntax Error
+        // กลับไปใช้ syntax ดั้งเดิมของคุณที่ชัวร์ที่สุด
         const { data, error } = await supabase
           .from("session_participants")
-          .select(`*, profiles(*)`)
-          .eq("session_id", session.id)
-          .order("games_played_today", { ascending: true }) 
-          .order("join_time", { ascending: true }); 
+          .select("*, profiles!profile_id(display_name, avatar_url, elo_rating)")
+          .eq("session_id", session.id);
           
         if (error) {
-          // 🚨 ถ้ายังมีอะไรพังอีก มันจะเด้ง Popup ฟ้องหน้าจอทันที!
-          alert("🚨 แจ้งเตือนแอดมิน: โหลดคิวไม่ได้เพราะ -> " + error.message);
+          alert("🚨 บั๊กดึงคน: " + error.message);
         } else {
+          // 🎯 เรดาร์รายงานผล! มันจะเด้งบอกเลยว่าเจอกี่คน
+          alert(`✅ รายงานจากระบบแอดมิน:\nพบก๊วนที่เปิดอยู่! \nมีคนอยู่ในก๊วนนี้ทั้งหมด: ${data?.length || 0} คน`);
           setParticipants(data || []);
         }
       } else {
+        alert("⚠️ เรดาร์ไม่พบก๊วนที่เปิดอยู่เลยครับ (is_active = false หมด)");
         setParticipants([]);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      alert("🚨 ระบบล่มกลางคัน: " + err.message);
     } finally {
       setLoading(false);
     }
