@@ -32,18 +32,34 @@ export default function AdminDashboard() {
   }, []);
 
   const fetchData = async () => {
-    const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).single();
+    // 🌟 1. ดึงก๊วนล่าสุดที่เปิดอยู่ (ใส่ order และ limit ป้องกันบั๊กก๊วนซ้อน)
+    const { data: session, error: sessionError } = await supabase
+      .from("daily_sessions")
+      .select("id")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (sessionError) {
+      console.error("Session Error:", sessionError);
+    }
+
     if (session) {
       fetchMatchHistory(session.id);
-      // ใช้ select('*') เพื่อดึงข้อมูลทั้งหมด รวมถึงคอลัมน์ team (ถ้าสร้างไว้แล้ว)
-      const { data } = await supabase
+      // 🌟 2. ดึงข้อมูลคนรอคิวเฉพาะก๊วนที่ดึงมาได้
+      const { data, error } = await supabase
         .from("session_participants")
         .select(`*, profiles!profile_id(display_name, avatar_url, elo_rating)`)
         .eq("session_id", session.id)
         .order("games_played_today", { ascending: true }) 
         .order("join_time", { ascending: true }); 
         
+      if (error) console.error("Participants Error:", error);
       setParticipants(data || []);
+    } else {
+      // 🌟 3. ถ้าไม่มีก๊วนเปิดอยู่เลย ให้ล้างกระดาน
+      setParticipants([]);
     }
     setLoading(false);
   };
