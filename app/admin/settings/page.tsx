@@ -46,18 +46,35 @@ export default function AdminSettings() {
   };
 
   const fetchCurrentSession = async () => {
-    const { data: session } = await supabase.from("daily_sessions").select("*").eq("is_active", true).single();
+    // 🌟 1. ดึงก๊วนล่าสุดมาดู "ไม่ว่าจะเปิดหรือปิดอยู่ก็ตาม"
+    const { data: session, error } = await supabase
+      .from("daily_sessions")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
     
     if (session) {
-      setSessionId(session.id);
-      setIsActive(session.is_active);
-      setStartTime(toLocalDatetimeInput(session.start_time));
-      setEndTime(toLocalDatetimeInput(session.end_time));
+      // 🌟 2. โหลดการตั้งค่า "ตัวเลขและระบบ" มาเป็น Template เสมอ (จำค่าเดิม!)
       setMaxPlayers(session.max_players || 16);
       setCourtFee(session.court_fee_flat || 50);
       setShuttleFee(session.base_shuttle_fee || 27);
-      // 🌟 โหลดระบบการจองที่เคยตั้งไว้ (ถ้าไม่มีให้ตั้งค่าเริ่มต้นเป็น pay_later)
       setReservationType(session.reservation_type || "pay_later");
+
+      // 🌟 3. เช็คว่าก๊วนล่าสุดนี้ "กำลังเปิดอยู่" หรือไม่?
+      if (session.is_active) {
+        // ถ้ากำลังเปิดอยู่: ให้จำ ID และเวลา เพื่อให้แอดมินแก้ไข หรือกดปุ่มแดงปิดก๊วนได้
+        setSessionId(session.id);
+        setIsActive(true); // สวิตช์จะเป็นสีเขียว
+        setStartTime(toLocalDatetimeInput(session.start_time));
+        setEndTime(toLocalDatetimeInput(session.end_time));
+      } else {
+        // ถ้าปิดไปแล้ว: ให้ล้าง ID และเวลาทิ้ง เพื่อเตรียมพร้อมสำหรับ "สร้างก๊วนรอบใหม่"
+        setSessionId(null); 
+        setIsActive(false); // สวิตช์จะเป็นสีเทา
+        setStartTime("");
+        setEndTime("");
+      }
     }
     setLoading(false);
   };

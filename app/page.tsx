@@ -65,7 +65,9 @@ export default function Home() {
   // 🌟 ลอจิก: ถ้าเป็นระบบโอนก่อน (pay_first) บังคับว่าต้องสถานะ court_paid หรือ paid ถึงจะลงคิวตีได้
   const isPayFirst = sessionToday?.reservation_type === 'pay_first';
   const hasPaidCourtFee = myRecord?.payment_status === 'court_paid' || myRecord?.payment_status === 'paid' || myRecord?.payment_status === 'pending_final';
-
+  // เช็คว่าเวลาปัจจุบัน เลยเวลา end_time ของก๊วนไปหรือยัง
+  const isSessionEnded = sessionToday?.end_time ? new Date() > new Date(sessionToday.end_time) : false;
+  
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-sans p-4 relative">
       <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 text-center max-w-md w-full">
@@ -138,16 +140,17 @@ export default function Home() {
                   {!hasReserved ? (
                     <button 
                       onClick={handleReserveSlot} 
-                      disabled={isFull}
+                      disabled={isFull || isSessionEnded}
                       className={`px-6 py-4 rounded-xl w-full font-bold text-lg transition-all shadow-sm active:scale-95
-                        ${isFull 
+                        ${(isFull || isSessionEnded)
                           ? "bg-slate-300 text-slate-500 cursor-not-allowed" 
                           : "bg-[#00537A] text-white hover:bg-[#013C58] hover:shadow-md"
                         }`}
                     >
-                      {isFull ? "คิวเต็มแล้ว 😭" : "🎟️ จองโควต้าตีแบดวันนี้"}
+                      {isSessionEnded ? "หมดเวลาจองก๊วนแล้ว ⏰" : isFull ? "คิวเต็มแล้ว 😭" : "🎟️ จองโควต้าตีแบดวันนี้"}
                     </button>
                   ) : (
+                  
                     <div className="space-y-3">
                       
                       {isActiveInQueue ? (
