@@ -33,35 +33,38 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      // 🌟 ทะลวงแคช Vercel: เปลี่ยนคำสั่ง Select ให้เจาะจง เพื่อหลอกให้มันดึงข้อมูลใหม่เสมอ
-      const { data: session } = await supabase
-        .from("daily_sessions")
-        .select("id, is_active, session_date") 
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).maybeSingle();
 
-      if (session) {
-        fetchMatchHistory(session.id);
-        
-        // 🌟 กลับไปใช้โค้ดดั้งเดิมของคุณที่ชัวร์ 100% (หน้าคิวใช้แบบนี้ มันถึงโชว์ข้อมูล)
-        const { data, error } = await supabase
-          .from("session_participants")
-          .select("*, profiles!profile_id(display_name, avatar_url, elo_rating)")
-          .eq("session_id", session.id)
-          .order("join_time", { ascending: true }); 
-          
-        if (error) {
-          console.error("ดึงรายชื่อไม่สำเร็จ:", error);
-        } else {
-          setParticipants(data || []);
-        }
-      } else {
-        setParticipants([]);
+      if (!session) {
+        alert("❌ X-RAY: ระบบไม่พบก๊วนที่ is_active = true");
+        setParticipants([]); setLoading(false); return;
       }
+
+      fetchMatchHistory(session.id);
+
+      // เช็คข้อมูลประชากรแบบไม่สนใจรหัสก๊วน
+      const { data: allUsers } = await supabase.from("session_participants").select("id, session_id");
+      // เช็คข้อมูลประชากรแบบกรองตามรหัสก๊วนปัจจุบัน
+      const { data: matchedUsers } = await supabase.from("session_participants").select("id, session_id").eq("session_id", session.id);
+
+      // ลองดึงข้อมูลจริงพร้อม Join Table Profiles
+      const { data: finalData, error } = await supabase
+        .from("session_participants")
+        .select("*, profiles(*)")
+        .eq("session_id", session.id)
+        .order("join_time", { ascending: true });
+
+      if (error) {
+         alert(`🚨 X-RAY: โค้ดพังที่ตาราง Profiles (Join Error)!\n\nรายละเอียด: ${error.message}`);
+      } else if (matchedUsers?.length === 0 && allUsers && allUsers.length > 0) {
+         alert(`⚠️ X-RAY: รหัสก๊วนขัดแย้งกัน (Data Mismatch)!\n\nในระบบมีคนจองมา ${allUsers.length} คน แต่ไม่มีใครมีรหัสตรงกับก๊วนปัจจุบัน (${session.id.substring(0,8)}...) เลย\n\nสาเหตุ: หน้า Home ของคุณตอนกดจอง น่าจะจำค่า ID ก๊วนเก่าส่งมาครับ`);
+      } else if (finalData && finalData.length > 0) {
+         alert(`✅ X-RAY: ฐานข้อมูลสมบูรณ์ 100%\n\nดึงรายชื่อได้ตรงเป๊ะ ${finalData.length} คน ถ้าชื่อยังไม่ยอมโชว์ แปลว่าบั๊กซ่อนอยู่ที่ HTML/UI ด้านล่างแล้วครับ`);
+      }
+
+      setParticipants(finalData || []);
     } catch (err: any) {
-      console.error("System error:", err.message);
+      alert("🚨 X-RAY CRASH: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -345,8 +348,7 @@ export default function AdminDashboard() {
 
   if (loading && participants.length === 0) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-gray-400 font-bold text-xl">กำลังโหลดระบบแอดมิน...</div>;
 
-  // 🌟 ท่าไม้ตายแหจับปลา: ใครก็ตามที่ "ไม่ได้กำลังตี (playing)" และ "ไม่ได้กำลังเตรียมตัว (preparing)" 
-  // ให้กวาดมาโยนใส่ช่อง "รอคิว" ให้หมด! (กันปัญหาพิมพ์สถานะผิดแล้วชื่อหาย)
+  // 🌟 กวาดทุกคนที่ "ไม่ได้ลงสนาม" และ "ไม่ได้กำลังวอร์ม" มาไว้ในช่องรอคิวให้หมด!
   const waiting = participants.filter(p => p.queue_status !== 'playing' && p.queue_status !== 'preparing');
   const preparing = participants.filter(p => p.queue_status === 'preparing');
   const playing = participants.filter(p => p.queue_status === 'playing');
