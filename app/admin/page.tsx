@@ -33,41 +33,42 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
+      // 🌟 1. ท่าไม้ตาย: ดึงก๊วนล่าสุดมาเลย (ไม่ใช้ .eq กรอง เพื่อหลอกระบบแคช)
       const { data: session, error: sessionErr } = await supabase
         .from("daily_sessions")
-        .select("id")
-        .eq("is_active", true)
+        .select("id, is_active")
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
 
       if (sessionErr && sessionErr.code !== 'PGRST116') {
-        alert("🚨 บั๊กหาก๊วน: " + sessionErr.message);
+        console.error("Session fetch error:", sessionErr.message);
         return;
       }
 
-      if (session) {
+      // 🌟 2. ใช้ Javascript เช็คความจริงว่าเปิดอยู่ไหม!
+      if (session && session.is_active === true) {
         fetchMatchHistory(session.id);
         
-        // กลับไปใช้ syntax ดั้งเดิมของคุณที่ชัวร์ที่สุด
+        // 🌟 3. ดึงคนรอคิว
         const { data, error } = await supabase
           .from("session_participants")
-          .select("*, profiles!profile_id(display_name, avatar_url, elo_rating)")
-          .eq("session_id", session.id);
+          .select("*, profiles(*)")
+          .eq("session_id", session.id)
+          .order("games_played_today", { ascending: true }) 
+          .order("join_time", { ascending: true }); 
           
         if (error) {
-          alert("🚨 บั๊กดึงคน: " + error.message);
+          alert("🚨 ดึงข้อมูลผู้เล่นไม่สำเร็จ: " + error.message);
         } else {
-          // 🎯 เรดาร์รายงานผล! มันจะเด้งบอกเลยว่าเจอกี่คน
-          alert(`✅ รายงานจากระบบแอดมิน:\nพบก๊วนที่เปิดอยู่! \nมีคนอยู่ในก๊วนนี้ทั้งหมด: ${data?.length || 0} คน`);
           setParticipants(data || []);
         }
       } else {
-        alert("⚠️ เรดาร์ไม่พบก๊วนที่เปิดอยู่เลยครับ (is_active = false หมด)");
+        // ถ้าปิดอยู่ ให้กระดานโล่ง
         setParticipants([]);
       }
     } catch (err: any) {
-      alert("🚨 ระบบล่มกลางคัน: " + err.message);
+      console.error("System error:", err.message);
     } finally {
       setLoading(false);
     }
