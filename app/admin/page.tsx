@@ -33,40 +33,30 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      // 🌟 1. ดึงก๊วนล่าสุดมา 5 อัน (ไม่ใช้ .eq กรอง เพื่อทะลวงแคชของ Vercel)
-      const { data: sessions, error: sessionErr } = await supabase
+      // 🌟 1. ดึงก๊วนที่เปิดอยู่ตรงๆ (ตอนนี้ฐานข้อมูลเรามีกฎเหล็กแล้ว ใช้คำสั่งนี้ได้เลย ปลอดภัย 100%)
+      const { data: session, error: sessionErr } = await supabase
         .from("daily_sessions")
-        .select("id, is_active")
-        .order("created_at", { ascending: false })
-        .limit(5);
+        .select("*")
+        .eq("is_active", true)
+        .maybeSingle();
 
-      if (sessionErr) {
-        console.error("Session fetch error:", sessionErr.message);
-        return;
-      }
+      if (sessionErr) console.error("Session fetch error:", sessionErr.message);
 
-      // 🌟 2. ใช้ Javascript คุ้ยหาก๊วนที่ "กำลังเปิดอยู่จริงๆ" จาก 5 อันนั้น
-      const activeSession = sessions?.find(s => s.is_active === true);
-
-      if (activeSession) {
-        fetchMatchHistory(activeSession.id);
+      if (session) {
+        fetchMatchHistory(session.id);
         
-        // 🌟 3. ดึงคนรอคิวของก๊วนนั้นมาแสดง
+        // 🌟 2. ดึงทุกคนที่อยู่ในก๊วนนี้ โดยเหมามาให้หมด!
         const { data, error } = await supabase
           .from("session_participants")
           .select("*, profiles(*)")
-          .eq("session_id", activeSession.id)
+          .eq("session_id", session.id)
           .order("games_played_today", { ascending: true }) 
           .order("join_time", { ascending: true }); 
           
-        if (error) {
-          console.error("Fetch error:", error.message);
-        } else {
-          setParticipants(data || []);
-        }
+        if (error) console.error("Fetch error:", error.message);
+        setParticipants(data || []);
       } else {
-        // ถ้าหาไม่เจอเลย แปลว่าปิดก๊วนหมดแล้วจริงๆ
-        setParticipants([]);
+        setParticipants([]); // ถ้าปิดก๊วนอยู่ ให้กระดานโล่ง
       }
     } catch (err: any) {
       console.error("System error:", err.message);
@@ -353,11 +343,12 @@ export default function AdminDashboard() {
 
   if (loading && participants.length === 0) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-gray-400 font-bold text-xl">กำลังโหลดระบบแอดมิน...</div>;
 
-  // 🌟 แก้ตรรกะ: ให้แอดมินมองเห็นทั้งคนที่ "พร้อมตี" (waiting) และ "รอยืนยัน/พัก" (resting)
-  const waiting = participants.filter(p => p.queue_status === 'waiting' || p.queue_status === 'resting');
+  // 🌟 ท่าไม้ตายแหจับปลา: ใครก็ตามที่ "ไม่ได้กำลังตี (playing)" และ "ไม่ได้กำลังเตรียมตัว (preparing)" 
+  // ให้กวาดมาโยนใส่ช่อง "รอคิว" ให้หมด! (กันปัญหาพิมพ์สถานะผิดแล้วชื่อหาย)
+  const waiting = participants.filter(p => p.queue_status !== 'playing' && p.queue_status !== 'preparing');
   const preparing = participants.filter(p => p.queue_status === 'preparing');
   const playing = participants.filter(p => p.queue_status === 'playing');
-
+  
   // จัดทีมใน Modal
   let modalPairing: any = null;
   if (showResultModal && matchToFinish.length === 4) {
