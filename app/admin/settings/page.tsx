@@ -103,31 +103,46 @@ export default function AdminSettings() {
       max_players: maxPlayers,
       court_fee_flat: courtFee,
       base_shuttle_fee: shuttleFee,
-      reservation_type: reservationType, // 🌟 ส่งข้อมูลระบบที่เลือกลงฐานข้อมูล
+      reservation_type: reservationType,
     };
 
-    if (sessionId) {
-      const { error } = await supabase.from("daily_sessions").update(sessionData).eq("id", sessionId);
+    // 🌟 ท่าไม้ตาย: เช็คฐานข้อมูลเดี๋ยวนั้นเลยว่ามีก๊วนเปิดอยู่ไหม! (ไม่พึ่งตัวแปร State)
+    const { data: existingActive } = await supabase
+      .from("daily_sessions")
+      .select("id")
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (existingActive) {
+      // ถ้ามีก๊วนเปิดอยู่แล้ว -> บังคับ "อัปเดต" เท่านั้น ห้ามสร้างก๊วนซ้อน!
+      const { error } = await supabase.from("daily_sessions").update(sessionData).eq("id", existingActive.id);
       if (error) alert("บันทึกไม่สำเร็จ: " + error.message);
-      else alert("✅ บันทึกการตั้งค่าก๊วนเรียบร้อยแล้ว!");
+      else alert("✅ อัปเดตการตั้งค่าก๊วนปัจจุบันเรียบร้อยแล้ว!");
     } else {
+      // ถ้าไม่มีก๊วนเปิดอยู่เลย -> ค่อย "สร้างก๊วนใหม่"
       const { error } = await supabase.from("daily_sessions").insert([sessionData]);
       if (error) alert("สร้างก๊วนใหม่ไม่สำเร็จ: " + error.message);
-      else {
-        alert("✅ เปิดก๊วนใหม่เรียบร้อยแล้ว!");
-        fetchCurrentSession(); 
-      }
+      else alert("✅ เปิดก๊วนใหม่รอบใหม่เรียบร้อยแล้ว!");
     }
+    
+    fetchCurrentSession();
     setSaving(false);
   };
 
   const handleCloseSession = async () => {
-    if (!confirm("⚠️ แน่ใจหรือไม่ที่จะ 'ปิดก๊วน' ตอนนี้? (คนจะไม่สามารถลงชื่อเพิ่มได้อีก)")) return;
+    if (!confirm("⚠️ แน่ใจหรือไม่ที่จะ 'ปิดก๊วน' ตอนนี้? (ระบบจะล็อกคิวและเคลียร์ยอด)")) return;
     setSaving(true);
-    if (sessionId) {
-      await supabase.from("daily_sessions").update({ is_active: false }).eq("id", sessionId);
+    
+    // 🌟 ท่ากวาดล้าง: บังคับปิด "ทุกก๊วน" ที่ค้างเป็น TRUE อยู่ให้กลายเป็น FALSE ทั้งหมด!
+    const { error } = await supabase.from("daily_sessions").update({ is_active: false }).eq("is_active", true);
+    
+    if (error) {
+      alert("ปิดก๊วนไม่สำเร็จ: " + error.message);
+    } else {
       setIsActive(false);
-      alert("ปิดก๊วนเรียบร้อยแล้วครับ");
+      setSessionId(null);
+      alert("ปิดก๊วนเรียบร้อยแล้วครับ! 🎉");
+      fetchCurrentSession();
     }
     setSaving(false);
   };
