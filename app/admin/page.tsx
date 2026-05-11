@@ -33,30 +33,32 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      // 🌟 1. ดึงก๊วนที่เปิดอยู่ตรงๆ (ตอนนี้ฐานข้อมูลเรามีกฎเหล็กแล้ว ใช้คำสั่งนี้ได้เลย ปลอดภัย 100%)
-      const { data: session, error: sessionErr } = await supabase
+      // 🌟 ทะลวงแคช Vercel: เปลี่ยนคำสั่ง Select ให้เจาะจง เพื่อหลอกให้มันดึงข้อมูลใหม่เสมอ
+      const { data: session } = await supabase
         .from("daily_sessions")
-        .select("*")
+        .select("id, is_active, session_date") 
         .eq("is_active", true)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
-
-      if (sessionErr) console.error("Session fetch error:", sessionErr.message);
 
       if (session) {
         fetchMatchHistory(session.id);
         
-        // 🌟 2. ดึงทุกคนที่อยู่ในก๊วนนี้ โดยเหมามาให้หมด!
+        // 🌟 กลับไปใช้โค้ดดั้งเดิมของคุณที่ชัวร์ 100% (หน้าคิวใช้แบบนี้ มันถึงโชว์ข้อมูล)
         const { data, error } = await supabase
           .from("session_participants")
-          .select("*, profiles(*)")
+          .select("*, profiles!profile_id(display_name, avatar_url, elo_rating)")
           .eq("session_id", session.id)
-          .order("games_played_today", { ascending: true }) 
           .order("join_time", { ascending: true }); 
           
-        if (error) console.error("Fetch error:", error.message);
-        setParticipants(data || []);
+        if (error) {
+          console.error("ดึงรายชื่อไม่สำเร็จ:", error);
+        } else {
+          setParticipants(data || []);
+        }
       } else {
-        setParticipants([]); // ถ้าปิดก๊วนอยู่ ให้กระดานโล่ง
+        setParticipants([]);
       }
     } catch (err: any) {
       console.error("System error:", err.message);
@@ -348,7 +350,7 @@ export default function AdminDashboard() {
   const waiting = participants.filter(p => p.queue_status !== 'playing' && p.queue_status !== 'preparing');
   const preparing = participants.filter(p => p.queue_status === 'preparing');
   const playing = participants.filter(p => p.queue_status === 'playing');
-  
+
   // จัดทีมใน Modal
   let modalPairing: any = null;
   if (showResultModal && matchToFinish.length === 4) {
