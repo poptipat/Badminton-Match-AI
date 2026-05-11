@@ -32,36 +32,41 @@ export default function AdminDashboard() {
   }, []);
 
   const fetchData = async () => {
-    // 🌟 1. ดึงก๊วนล่าสุดที่เปิดอยู่ (ใส่ order และ limit ป้องกันบั๊กก๊วนซ้อน)
-    const { data: session, error: sessionError } = await supabase
-      .from("daily_sessions")
-      .select("id")
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
+    try {
+      // 1. ดึงก๊วนล่าสุดที่เปิดอยู่
+      const { data: session } = await supabase
+        .from("daily_sessions")
+        .select("id")
+        .eq("is_active", true)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
 
-    if (sessionError) {
-      console.error("Session Error:", sessionError);
-    }
-
-    if (session) {
-      fetchMatchHistory(session.id);
-      // 🌟 2. ดึงข้อมูลคนรอคิวเฉพาะก๊วนที่ดึงมาได้
-      const { data, error } = await supabase
-        .from("session_participants")
-        .select(`*, profiles!profile_id(display_name, avatar_url, elo_rating)`)
-        .eq("session_id", session.id)
-        .order("games_played_today", { ascending: true }) 
-        .order("join_time", { ascending: true }); 
+      if (session) {
+        fetchMatchHistory(session.id);
         
-      if (error) console.error("Participants Error:", error);
-      setParticipants(data || []);
-    } else {
-      // 🌟 3. ถ้าไม่มีก๊วนเปิดอยู่เลย ให้ล้างกระดาน
-      setParticipants([]);
+        // 🌟 2. แก้จุดตาย! ใช้ profiles(*) เพื่อป้องกันปัญหา Syntax Error
+        const { data, error } = await supabase
+          .from("session_participants")
+          .select(`*, profiles(*)`)
+          .eq("session_id", session.id)
+          .order("games_played_today", { ascending: true }) 
+          .order("join_time", { ascending: true }); 
+          
+        if (error) {
+          // 🚨 ถ้ายังมีอะไรพังอีก มันจะเด้ง Popup ฟ้องหน้าจอทันที!
+          alert("🚨 แจ้งเตือนแอดมิน: โหลดคิวไม่ได้เพราะ -> " + error.message);
+        } else {
+          setParticipants(data || []);
+        }
+      } else {
+        setParticipants([]);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // 🤖 ฟังก์ชัน AI คำนวณคู่ที่สูสีที่สุด
