@@ -33,38 +33,39 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      // 🌟 1. ท่าไม้ตาย: ดึงก๊วนล่าสุดมาเลย (ไม่ใช้ .eq กรอง เพื่อหลอกระบบแคช)
-      const { data: session, error: sessionErr } = await supabase
+      // 🌟 1. ดึงก๊วนล่าสุดมา 5 อัน (ไม่ใช้ .eq กรอง เพื่อทะลวงแคชของ Vercel)
+      const { data: sessions, error: sessionErr } = await supabase
         .from("daily_sessions")
         .select("id, is_active")
         .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+        .limit(5);
 
-      if (sessionErr && sessionErr.code !== 'PGRST116') {
+      if (sessionErr) {
         console.error("Session fetch error:", sessionErr.message);
         return;
       }
 
-      // 🌟 2. ใช้ Javascript เช็คความจริงว่าเปิดอยู่ไหม!
-      if (session && session.is_active === true) {
-        fetchMatchHistory(session.id);
+      // 🌟 2. ใช้ Javascript คุ้ยหาก๊วนที่ "กำลังเปิดอยู่จริงๆ" จาก 5 อันนั้น
+      const activeSession = sessions?.find(s => s.is_active === true);
+
+      if (activeSession) {
+        fetchMatchHistory(activeSession.id);
         
-        // 🌟 3. ดึงคนรอคิว
+        // 🌟 3. ดึงคนรอคิวของก๊วนนั้นมาแสดง
         const { data, error } = await supabase
           .from("session_participants")
           .select("*, profiles(*)")
-          .eq("session_id", session.id)
+          .eq("session_id", activeSession.id)
           .order("games_played_today", { ascending: true }) 
           .order("join_time", { ascending: true }); 
           
         if (error) {
-          alert("🚨 ดึงข้อมูลผู้เล่นไม่สำเร็จ: " + error.message);
+          console.error("Fetch error:", error.message);
         } else {
           setParticipants(data || []);
         }
       } else {
-        // ถ้าปิดอยู่ ให้กระดานโล่ง
+        // ถ้าหาไม่เจอเลย แปลว่าปิดก๊วนหมดแล้วจริงๆ
         setParticipants([]);
       }
     } catch (err: any) {
@@ -544,7 +545,7 @@ export default function AdminDashboard() {
                         
                         </div>
                       </div>
-                      
+
                       {isTeamA && <span className="font-black text-blue-400 text-xs bg-blue-500/20 px-2 py-1 rounded-lg">ทีม 1</span>}
                       {isTeamB && <span className="font-black text-orange-400 text-xs bg-orange-500/20 px-2 py-1 rounded-lg">ทีม 2</span>}
                     </div>
