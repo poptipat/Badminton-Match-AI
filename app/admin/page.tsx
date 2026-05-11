@@ -352,7 +352,8 @@ export default function AdminDashboard() {
 
   if (loading && participants.length === 0) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-gray-400 font-bold text-xl">กำลังโหลดระบบแอดมิน...</div>;
 
-  const waiting = participants.filter(p => p.queue_status === 'waiting');
+  // 🌟 แก้ตรรกะ: ให้แอดมินมองเห็นทั้งคนที่ "พร้อมตี" (waiting) และ "รอยืนยัน/พัก" (resting)
+  const waiting = participants.filter(p => p.queue_status === 'waiting' || p.queue_status === 'resting');
   const preparing = participants.filter(p => p.queue_status === 'preparing');
   const playing = participants.filter(p => p.queue_status === 'playing');
 
@@ -529,11 +530,21 @@ export default function AdminDashboard() {
                     >
                       <div className="flex items-center gap-3 w-full min-w-0">
                         <img src={p.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${p.profiles?.display_name || "Unknown"}&background=random`} className="w-10 h-10 rounded-full object-cover border border-gray-700 flex-shrink-0" alt="profile" />
+                        
                         <div className="flex-1 min-w-0">
-                          <p className={`font-semibold text-sm md:text-base truncate ${isTeamA ? 'text-blue-400' : isTeamB ? 'text-orange-400' : 'text-gray-200'}`}>{p.profiles?.display_name || "ไม่ทราบชื่อ"}</p>
-                          <p className="text-xs text-gray-500 truncate">ตีไป: {p.games_played_today} | ELO: {p.profiles.elo_rating}</p>
+                          <p className={`font-semibold text-sm md:text-base truncate ${isTeamA ? 'text-blue-400' : isTeamB ? 'text-orange-400' : 'text-gray-200'}`}>
+                            {p.profiles?.display_name || "ไม่ทราบชื่อ"}
+                          </p>
+
+                          <p className="text-xs text-gray-500 truncate">ตีไป: {p.games_played_today} | ELO: {p.profiles.elo_rating}
+                            <span className={`ml-1 font-bold ${p.queue_status === 'waiting' ? 'text-emerald-400' : 'text-orange-400'}`}>
+                              {p.queue_status === 'waiting' ? ' (พร้อมตี)' : ' (รอยืนยัน/พัก)'}
+                            </span>
+                          </p>
+                        
                         </div>
                       </div>
+                      
                       {isTeamA && <span className="font-black text-blue-400 text-xs bg-blue-500/20 px-2 py-1 rounded-lg">ทีม 1</span>}
                       {isTeamB && <span className="font-black text-orange-400 text-xs bg-orange-500/20 px-2 py-1 rounded-lg">ทีม 2</span>}
                     </div>
