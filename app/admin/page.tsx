@@ -20,6 +20,7 @@ export default function AdminDashboard() {
   
   // 🌟 State สำหรับเก็บประวัติการแข่งขัน
   const [matchHistory, setMatchHistory] = useState<any[]>([]);
+  const [shuttleCount, setShuttleCount] = useState(1);
 
   useEffect(() => {
     fetchData();
@@ -240,7 +241,7 @@ export default function AdminDashboard() {
       .maybeSingle();
       
     const currentShuttleFee = sessionData?.base_shuttle_fee || 27; // ถ้าดึงไม่ติด ให้ใช้ค่าเริ่มต้น 27
-    
+
     const getAvgElo = (team: any[]) => {
       if (team.length === 0) return 1200;
       return team.reduce((acc, p) => acc + (p.profiles?.elo_rating || 1200), 0) / team.length;
@@ -267,7 +268,7 @@ export default function AdminDashboard() {
         profile_id: p.profile_id,
         new_elo: Math.max(0, (p.profiles?.elo_rating || 1200) + eloChange),
         games_played: p.games_played_today + 1,
-        shuttle_fee: (p.accumulated_shuttle_fee || 0) + currentShuttleFee,
+        shuttle_fee: (p.accumulated_shuttle_fee || 0) + (currentShuttleFee * shuttleCount),
         wins: (p.wins || 0) + (!isDraw && isWinner ? 1 : 0),
         losses: (p.losses || 0) + (!isDraw && !isWinner ? 1 : 0),
         draws: (p.draws || 0) + (isDraw ? 1 : 0)
@@ -427,9 +428,18 @@ export default function AdminDashboard() {
           <div className="bg-gray-900 rounded-3xl p-6 md:p-8 w-full max-w-md shadow-2xl border border-gray-800">
             <h3 className="text-2xl font-extrabold text-center text-yellow-400 mb-6">🎮 สรุปผลการแข่งขัน</h3>
             
+            <div className="flex items-center justify-between bg-gray-800 p-3 rounded-xl mb-4 border border-gray-700">
+              <span className="text-gray-300 font-bold">🏸 จำนวนลูกแบดที่ใช้:</span>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setShuttleCount(Math.max(1, shuttleCount - 1))} className="bg-gray-700 w-8 h-8 rounded-lg text-white">-</button>
+                <span className="text-xl font-bold text-white w-6 text-center">{shuttleCount}</span>
+                <button onClick={() => setShuttleCount(shuttleCount + 1)} className="bg-gray-700 w-8 h-8 rounded-lg text-white">+</button>
+              </div>
+            </div>
+
             <div className="space-y-4">
               <button onClick={() => confirmMatchResult('teamA')} className="w-full bg-blue-900/20 border border-blue-500/50 hover:bg-blue-900/40 text-left p-4 rounded-2xl transition flex flex-col items-center">
-                <span className="text-blue-400 font-bold mb-1">🏆 ทีม 1 (ฟ้า) ชนะ</span>
+                <span className="text-blue-400 font-bold mb-1">🏆 ทีม A (ฟ้า) ชนะ</span>
                 <span className="text-gray-300 text-sm text-center">{modalPairing.teamA[0].profiles.display_name} & {modalPairing.teamA[1].profiles.display_name}</span>
               </button>
 
@@ -438,7 +448,7 @@ export default function AdminDashboard() {
               </button>
 
               <button onClick={() => confirmMatchResult('teamB')} className="w-full bg-orange-900/20 border border-orange-500/50 hover:bg-orange-900/40 text-left p-4 rounded-2xl transition flex flex-col items-center">
-                <span className="text-orange-400 font-bold mb-1">🏆 ทีม 2 (ส้ม) ชนะ</span>
+                <span className="text-orange-400 font-bold mb-1">🏆 ทีม B (ส้ม) ชนะ</span>
                 <span className="text-gray-300 text-sm text-center">{modalPairing.teamB[0].profiles.display_name} & {modalPairing.teamB[1].profiles.display_name}</span>
               </button>
             </div>
@@ -577,10 +587,15 @@ export default function AdminDashboard() {
                         <div className="mt-3">
                           <RenderMatchPairing players={preps} />
                         </div>
-                        {preps.length === 4 ? (
-                          <button onClick={() => handleStartMatch(courtNum)} className="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold py-3 rounded-xl shadow-md transition">
-                            ▶️ ให้เริ่มตี
-                          </button>
+
+                        <div className="flex flex-col gap-2 mt-4">
+
+                         {preps.length === 4 ? (
+                           <button 
+                             onClick={() => handleStartMatch(courtNum)} 
+                             className="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold py-3 rounded-xl shadow-md transition">
+                             ▶️ ให้เริ่มตี
+                           </button>
                         ) : (
                           <button onClick={() => handleForceClearCourt('preparing', courtNum)} 
                                   className="w-full mt-2 bg-red-950 hover:bg-red-900 border border-red-800 text-red-200 py-2 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2">
@@ -588,9 +603,10 @@ export default function AdminDashboard() {
                             🔙 ดึงกลับมารอคิว (คนไม่ครบ)
                           </button>
                         )}
+                        </div>
                       </div>
                     )}
-
+                    
                     {/* กำลังตีอยู่ */}
                     {plays.length > 0 && (
                       <div>
