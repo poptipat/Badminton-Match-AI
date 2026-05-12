@@ -33,44 +33,35 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      // 🌟 ทะลวงแคช: ดึงก๊วนบนสุดมาดูตรงๆ ไม่ต้องใช้ .eq กรอง
+      // 1. ดึงก๊วนล่าสุดที่เปิดอยู่
       const { data: session } = await supabase
         .from("daily_sessions")
-        .select("id, is_active")
+        .select("id")
+        .eq("is_active", true)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (!session) {
-        alert("❌ X-RAY: ฐานข้อมูลพัง หรือไม่มีก๊วนเลยสักอันในตาราง daily_sessions!");
-        setParticipants([]); setLoading(false); return;
-      }
-
-      // 🎯 จับโป๊ะสถานะก๊วน!
-      if (session.is_active === false) {
-         alert(`⚠️ X-RAY จับโป๊ะได้แล้ว!\n\nก๊วนล่าสุดในระบบ ตอนนี้มีสถานะเป็น "ปิดอยู่ (FALSE)" ครับ!\n\n👉 วิธีแก้: แอดมินต้องไปหน้า "ตั้งค่าก๊วน" แล้วเปิดสวิตช์ก๊วนให้เป็นสีเขียว -> กดบันทึก ครับ`);
-         setParticipants([]); setLoading(false); return;
-      }
-
-      fetchMatchHistory(session.id);
-
-      const { data: finalData, error } = await supabase
-        .from("session_participants")
-        .select("*, profiles(*)")
-        .eq("session_id", session.id)
-        .order("join_time", { ascending: true });
-
-      if (error) {
-         alert(`🚨 X-RAY: โค้ดพังที่ตาราง Profiles!\n\n${error.message}`);
-      } else if (finalData && finalData.length > 0) {
-         alert(`✅ X-RAY: ฐานข้อมูลสมบูรณ์!\nดึงรายชื่อได้ ${finalData.length} คน แล้วครับ!`);
+      if (session) {
+        fetchMatchHistory(session.id);
+        
+        // 🌟 2. จุดเผด็จศึก: ใช้ !profile_id บังคับเส้นทาง เพื่อแก้บั๊กความสัมพันธ์ซ้ำซ้อน
+        const { data, error } = await supabase
+          .from("session_participants")
+          .select("*, profiles!profile_id(display_name, avatar_url, elo_rating)")
+          .eq("session_id", session.id)
+          .order("join_time", { ascending: true }); 
+          
+        if (error) {
+          alert("🚨 โหลดข้อมูลพลาด: " + error.message);
+        } else {
+          setParticipants(data || []);
+        }
       } else {
-         alert(`⚠️ X-RAY: ก๊วนเปิดอยู่ (TRUE) แต่ยังไม่มีใครจองเข้ามาในก๊วนนี้ครับ\n\n👉 ลองไปหน้า Home แล้วกดจองคิวใหม่ 1 คนครับ`);
+        setParticipants([]);
       }
-
-      setParticipants(finalData || []);
     } catch (err: any) {
-      alert("🚨 X-RAY CRASH: " + err.message);
+      console.error(err);
     } finally {
       setLoading(false);
     }
