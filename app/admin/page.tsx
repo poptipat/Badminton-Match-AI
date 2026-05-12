@@ -590,19 +590,19 @@ export default function AdminDashboard() {
 
                         <div className="flex flex-col gap-2 mt-4">
 
-                         {preps.length === 4 ? (
+                         {preps.length === 4 && (
                            <button 
                              onClick={() => handleStartMatch(courtNum)} 
                              className="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold py-3 rounded-xl shadow-md transition">
                              ▶️ ให้เริ่มตี
                            </button>
-                        ) : (
-                          <button onClick={() => handleForceClearCourt('preparing', courtNum)} 
-                                  className="w-full mt-2 bg-red-950 hover:bg-red-900 border border-red-800 text-red-200 py-2 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2">
-                          
-                            🔙 ดึงกลับมารอคิว (คนไม่ครบ)
-                          </button>
                         )}
+
+                          <button 
+                             onClick={() => handleForceClearCourt('preparing', courtNum)} 
+                             className="w-full bg-gray-800 hover:bg-red-950 border border-gray-700 hover:border-red-800 text-gray-400 hover:text-red-200 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2">
+                             🔙 ดึงกลับมารอคิว (สลับคู่/จัดใหม่)
+                          </button>
                         </div>
                       </div>
                     )}
