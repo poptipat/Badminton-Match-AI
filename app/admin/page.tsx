@@ -232,7 +232,15 @@ export default function AdminDashboard() {
     const pairing = (tA.length > 0 && tB.length > 0) ? { teamA: tA, teamB: tB } : getBestPairing(matchToFinish);
     const finalTeamA = pairing?.teamA || [];
     const finalTeamB = pairing?.teamB || [];
-
+    
+    const { data: sessionData } = await supabase
+      .from("daily_sessions")
+      .select("base_shuttle_fee")
+      .eq("is_active", true)
+      .maybeSingle();
+      
+    const currentShuttleFee = sessionData?.base_shuttle_fee || 27; // ถ้าดึงไม่ติด ให้ใช้ค่าเริ่มต้น 27
+    
     const getAvgElo = (team: any[]) => {
       if (team.length === 0) return 1200;
       return team.reduce((acc, p) => acc + (p.profiles?.elo_rating || 1200), 0) / team.length;
@@ -259,7 +267,7 @@ export default function AdminDashboard() {
         profile_id: p.profile_id,
         new_elo: Math.max(0, (p.profiles?.elo_rating || 1200) + eloChange),
         games_played: p.games_played_today + 1,
-        shuttle_fee: (p.accumulated_shuttle_fee || 0) + 27,
+        shuttle_fee: (p.accumulated_shuttle_fee || 0) + currentShuttleFee,
         wins: (p.wins || 0) + (!isDraw && isWinner ? 1 : 0),
         losses: (p.losses || 0) + (!isDraw && !isWinner ? 1 : 0),
         draws: (p.draws || 0) + (isDraw ? 1 : 0)
@@ -574,7 +582,9 @@ export default function AdminDashboard() {
                             ▶️ ให้เริ่มตี
                           </button>
                         ) : (
-                          <button onClick={() => handleForceClearCourt('preparing', courtNum)} className="mt-4 w-full bg-gray-800 border border-gray-700 hover:bg-gray-700 text-gray-300 text-sm font-bold py-2.5 rounded-xl transition">
+                          <button onClick={() => handleForceClearCourt('preparing', courtNum)} 
+                                  className="w-full mt-2 bg-red-950 hover:bg-red-900 border border-red-800 text-red-200 py-2 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2">
+                          
                             🔙 ดึงกลับมารอคิว (คนไม่ครบ)
                           </button>
                         )}
