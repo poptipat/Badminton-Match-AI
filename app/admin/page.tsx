@@ -33,21 +33,27 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      const { data: session } = await supabase.from("daily_sessions").select("id").eq("is_active", true).maybeSingle();
+      // 🌟 ทะลวงแคช: ดึงก๊วนบนสุดมาดูตรงๆ ไม่ต้องใช้ .eq กรอง
+      const { data: session } = await supabase
+        .from("daily_sessions")
+        .select("id, is_active")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
       if (!session) {
-        alert("❌ X-RAY: ระบบไม่พบก๊วนที่ is_active = true");
+        alert("❌ X-RAY: ฐานข้อมูลพัง หรือไม่มีก๊วนเลยสักอันในตาราง daily_sessions!");
         setParticipants([]); setLoading(false); return;
+      }
+
+      // 🎯 จับโป๊ะสถานะก๊วน!
+      if (session.is_active === false) {
+         alert(`⚠️ X-RAY จับโป๊ะได้แล้ว!\n\nก๊วนล่าสุดในระบบ ตอนนี้มีสถานะเป็น "ปิดอยู่ (FALSE)" ครับ!\n\n👉 วิธีแก้: แอดมินต้องไปหน้า "ตั้งค่าก๊วน" แล้วเปิดสวิตช์ก๊วนให้เป็นสีเขียว -> กดบันทึก ครับ`);
+         setParticipants([]); setLoading(false); return;
       }
 
       fetchMatchHistory(session.id);
 
-      // เช็คข้อมูลประชากรแบบไม่สนใจรหัสก๊วน
-      const { data: allUsers } = await supabase.from("session_participants").select("id, session_id");
-      // เช็คข้อมูลประชากรแบบกรองตามรหัสก๊วนปัจจุบัน
-      const { data: matchedUsers } = await supabase.from("session_participants").select("id, session_id").eq("session_id", session.id);
-
-      // ลองดึงข้อมูลจริงพร้อม Join Table Profiles
       const { data: finalData, error } = await supabase
         .from("session_participants")
         .select("*, profiles(*)")
@@ -55,11 +61,11 @@ export default function AdminDashboard() {
         .order("join_time", { ascending: true });
 
       if (error) {
-         alert(`🚨 X-RAY: โค้ดพังที่ตาราง Profiles (Join Error)!\n\nรายละเอียด: ${error.message}`);
-      } else if (matchedUsers?.length === 0 && allUsers && allUsers.length > 0) {
-         alert(`⚠️ X-RAY: รหัสก๊วนขัดแย้งกัน (Data Mismatch)!\n\nในระบบมีคนจองมา ${allUsers.length} คน แต่ไม่มีใครมีรหัสตรงกับก๊วนปัจจุบัน (${session.id.substring(0,8)}...) เลย\n\nสาเหตุ: หน้า Home ของคุณตอนกดจอง น่าจะจำค่า ID ก๊วนเก่าส่งมาครับ`);
+         alert(`🚨 X-RAY: โค้ดพังที่ตาราง Profiles!\n\n${error.message}`);
       } else if (finalData && finalData.length > 0) {
-         alert(`✅ X-RAY: ฐานข้อมูลสมบูรณ์ 100%\n\nดึงรายชื่อได้ตรงเป๊ะ ${finalData.length} คน ถ้าชื่อยังไม่ยอมโชว์ แปลว่าบั๊กซ่อนอยู่ที่ HTML/UI ด้านล่างแล้วครับ`);
+         alert(`✅ X-RAY: ฐานข้อมูลสมบูรณ์!\nดึงรายชื่อได้ ${finalData.length} คน แล้วครับ!`);
+      } else {
+         alert(`⚠️ X-RAY: ก๊วนเปิดอยู่ (TRUE) แต่ยังไม่มีใครจองเข้ามาในก๊วนนี้ครับ\n\n👉 ลองไปหน้า Home แล้วกดจองคิวใหม่ 1 คนครับ`);
       }
 
       setParticipants(finalData || []);
